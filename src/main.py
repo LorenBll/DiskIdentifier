@@ -203,7 +203,7 @@ def _persist_disk_identifier(disk_root: Path, disk_identifier: str) -> None:
     """Persist a disk identifier in the identifiers json store."""
     identifiers_data = _load_identifiers()
     identifiers = identifiers_data["identifiers"]
-    identifiers.append({"path": disk_root.as_posix(), "disk_id": disk_identifier})
+    identifiers.append(disk_identifier)
 
     IDENTIFIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(IDENTIFIERS_PATH, "w", encoding="utf-8") as file_handle:
