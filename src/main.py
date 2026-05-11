@@ -398,6 +398,34 @@ def locate(identifier_value: str | None = None) -> tuple:
     return jsonify({"path": disk_root}), 200
 
 
+@app.get("/api/identify")
+@app.get("/api/identify/<path:path_value>")
+def identify(path_value: str | None = None) -> tuple:
+    """Return the disk identifier for a provided disk root path.
+
+    If the disk does not have a loaded identifier, respond with a warning.
+    """
+    if not isinstance(path_value, str) or not path_value.strip():
+        payload = request.get_json(silent=True) or {}
+        path_value = payload.get("path") if isinstance(payload, dict) else None
+
+    if not isinstance(path_value, str) or not path_value.strip():
+        return jsonify({"error": "A non-empty path is required."}), 400
+
+    disk_root = _normalize_path_value(path_value.strip())
+    if not _is_disk_root(disk_root):
+        return jsonify({"error": "The provided path must be a disk root."}), 400
+
+    disk_root_path = disk_root.as_posix()
+    with DISK_ASSOCIATION_CACHE_LOCK:
+        disk_identifier = DISK_ASSOCIATION_CACHE.get(disk_root_path)
+
+    if disk_identifier is None:
+        return jsonify({"warning": "No disk identifier is loaded for the provided disk."}), 404
+
+    return jsonify({"disk_identifier": disk_identifier, "path": disk_root_path}), 200
+
+
 @app.delete("/api/forget")
 @app.delete("/api/forget/<string:identifier_value>")
 def forget(identifier_value: str | None = None) -> tuple:

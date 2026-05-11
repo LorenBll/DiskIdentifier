@@ -118,6 +118,13 @@ The API exposes four endpoints.
 - **What it does:** looks up the identifier in the in-memory cache and returns the matching disk root path.
 - **How it answers:** returns `200 OK` with JSON like `{"path": "..."}`. Missing identifiers return `400`. Unknown identifiers return `404`.
 
+### `GET /api/identify` or `GET /api/identify/<path>`
+
+- **Request type:** `GET`
+- **Arguments:** provide the disk root as a path parameter or in a JSON body with `path`.
+- **What it does:** returns the disk identifier currently loaded for the provided disk root (from the in-memory cache).
+- **How it answers:** returns `200 OK` with JSON like `{"disk_identifier": "...", "path": "..."}` when an identifier is loaded. If the path is missing or invalid the endpoint returns `400`. If no identifier is loaded for the provided disk root, the endpoint returns `404` with a warning message.
+
 ### `DELETE /api/forget` or `DELETE /api/forget/<identifier>`
 
 - **Request type:** `DELETE`
