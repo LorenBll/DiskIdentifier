@@ -299,9 +299,32 @@ def _start_disk_association_refresh_loop() -> None:
     refresh_thread.start()
 
 
-def _normalize_path_value(path_value: str) -> Path:
-    """Normalize a user-provided path value."""
-    return Path(path_value).expanduser().resolve(strict=False)
+def _normalize_disk_root_value(path_value: str) -> Path:
+    """Map a user-provided value to a known local disk root."""
+    candidate_value = path_value.strip()
+    if not candidate_value:
+        raise ValueError("A non-empty path is required.")
+
+    available_roots = _list_available_disks()
+
+    if os.name == "nt":
+        candidate_value = candidate_value.replace("\\", "/")
+        if len(candidate_value) == 2 and candidate_value[1] == ":" and candidate_value[0].isalpha():
+            candidate_value = f"{candidate_value.upper()}/"
+
+        if len(candidate_value) != 3 or candidate_value[1] != ":" or candidate_value[2] != "/" or not candidate_value[0].isalpha():
+            raise ValueError("The provided path must be a disk root.")
+
+        for disk_root in available_roots:
+            if disk_root.as_posix().upper() == candidate_value.upper():
+                return disk_root
+
+        raise ValueError("The provided path must be a disk root.")
+
+    if candidate_value != "/":
+        raise ValueError("The provided path must be a disk root.")
+
+    return available_roots[0]
 
 
 def _load_identifiers() -> dict:
@@ -409,7 +432,7 @@ def register(path_value: str | None = None) -> tuple:
         return jsonify({"error": "A non-empty path is required."}), 400
 
     try:
-        disk_root = _normalize_path_value(path_value.strip())
+        disk_root = _normalize_disk_root_value(path_value)
     except (ValueError, OSError, RuntimeError):
         return jsonify({"error": "Invalid path provided."}), 400
     
@@ -483,7 +506,7 @@ def identify(path_value: str | None = None) -> tuple:
         return jsonify({"error": "A non-empty path is required."}), 400
 
     try:
-        disk_root = _normalize_path_value(path_value.strip())
+        disk_root = _normalize_disk_root_value(path_value)
     except (ValueError, OSError, RuntimeError):
         return jsonify({"error": "Invalid path provided."}), 400
     
