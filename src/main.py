@@ -94,10 +94,24 @@ def _initialize_service_config() -> None:
     global SERVICE_HOST, SERVICE_PORT, UNIVERSAL_DISK_IDENTIFIER_ID
     config = _load_configuration()
 
-    # Always use private mode (local only)
-    private_config = config.get("private", {})
-    SERVICE_HOST = private_config.get("ip", "127.0.0.1")
-    SERVICE_PORT = private_config.get("port", 49155)
+    # Accept both legacy top-level config and nested private config.
+    private_config = config.get("private") if isinstance(config.get("private"), dict) else {}
+
+    configured_host = private_config.get("ip")
+    if not isinstance(configured_host, str) or not configured_host.strip():
+        configured_host = config.get("ip", "127.0.0.1")
+
+    configured_port = private_config.get("port")
+    if configured_port is None:
+        configured_port = config.get("port", 49155)
+
+    if isinstance(configured_port, str) and configured_port.isdigit():
+        configured_port = int(configured_port)
+    if not isinstance(configured_port, int):
+        configured_port = 49155
+
+    SERVICE_HOST = configured_host.strip() if isinstance(configured_host, str) else "127.0.0.1"
+    SERVICE_PORT = configured_port
 
     universal_identifier = config.get("universalDiskIdentifierID")
     if not _is_valid_universal_disk_identifier(universal_identifier):
