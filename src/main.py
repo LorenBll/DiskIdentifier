@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import ctypes
+import ipaddress
 import json
 import logging
 import os
+import socket
 import string
 import threading
 import time
@@ -323,7 +325,71 @@ def _load_identifiers() -> dict:
     return {"identifiers": identifiers}
 
 
+def _get_local_device_addresses() -> set[str]:
+    """Collect the IP addresses assigned to the current device."""
+    local_addresses: set[str] = set()
+    candidate_names = {socket.gethostname(), socket.getfqdn()}
+
+    for candidate_name in candidate_names:
+        if not candidate_name:
+            continue
+
+        try:
+            local_addresses.update(address_info[4][0] for address_info in socket.getaddrinfo(candidate_name, None))
+        except OSError:
+            pass
+
+        try:
+            local_addresses.update(socket.gethostbyname_ex(candidate_name)[2])
+        except OSError:
+            pass
+
+    for probe_address in ("8.8.8.8", "1.1.1.1"):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as socket_handle:
+                socket_handle.connect((probe_address, 80))
+                local_addresses.add(socket_handle.getsockname()[0])
+        except OSError:
+            pass
+
+    normalized_addresses: set[str] = set()
+    for address_value in local_addresses:
+        try:
+            normalized_addresses.add(ipaddress.ip_address(address_value).compressed)
+        except ValueError:
+            continue
+
+    normalized_addresses.update({"127.0.0.1", "::1"})
+    return normalized_addresses
+
+
+def _is_local_request() -> bool:
+    """Check whether the current request originates from the local device."""
+    remote_address = request.remote_addr
+    if not isinstance(remote_address, str) or not remote_address.strip():
+        return False
+
+    try:
+        client_ip = ipaddress.ip_address(remote_address.strip())
+    except ValueError:
+        return False
+
+    if client_ip.is_loopback:
+        return True
+
+    return client_ip.compressed in _get_local_device_addresses()
+
+
 app = Flask(__name__)
+
+
+@app.before_request
+def restrict_to_local_device() -> tuple | None:
+    """Reject requests that do not originate from the local device."""
+    if request.path.startswith("/api/") and not _is_local_request():
+        return jsonify({"error": "Local device access only."}), 403
+
+    return None
 
 
 # ============================================================================
@@ -342,7 +408,11 @@ def register(path_value: str | None = None) -> tuple:
     if not isinstance(path_value, str) or not path_value.strip():
         return jsonify({"error": "A non-empty path is required."}), 400
 
-    disk_root = _normalize_path_value(path_value.strip())
+    try:
+        disk_root = _normalize_path_value(path_value.strip())
+    except (ValueError, OSError, RuntimeError):
+        return jsonify({"error": "Invalid path provided."}), 400
+    
     if not _is_disk_root(disk_root):
         return jsonify({"error": "The provided path must be a disk root."}), 400
 
@@ -358,20 +428,20 @@ def register(path_value: str | None = None) -> tuple:
     try:
         identifier_file.write_text(disk_identifier, encoding="utf-8")
         _persist_disk_identifier(disk_root, disk_identifier)
-    except OSError as exc:
+    except OSError:
         try:
             if identifier_file.exists():
                 identifier_file.unlink()
         except OSError:
             pass
-        return jsonify({"error": f"Failed to create identifier file: {exc}"}), 500
-    except Exception as exc:
+        return jsonify({"error": "Failed to create identifier file."}), 500
+    except Exception:
         try:
             if identifier_file.exists():
                 identifier_file.unlink()
         except OSError:
             pass
-        return jsonify({"error": f"Failed to persist disk identifier: {exc}"}), 500
+        return jsonify({"error": "Failed to persist disk identifier."}), 500
 
     _cache_disk_association(disk_root, disk_identifier)
 
@@ -412,7 +482,11 @@ def identify(path_value: str | None = None) -> tuple:
     if not isinstance(path_value, str) or not path_value.strip():
         return jsonify({"error": "A non-empty path is required."}), 400
 
-    disk_root = _normalize_path_value(path_value.strip())
+    try:
+        disk_root = _normalize_path_value(path_value.strip())
+    except (ValueError, OSError, RuntimeError):
+        return jsonify({"error": "Invalid path provided."}), 400
+    
     if not _is_disk_root(disk_root):
         return jsonify({"error": "The provided path must be a disk root."}), 400
 
@@ -424,6 +498,15 @@ def identify(path_value: str | None = None) -> tuple:
         return jsonify({"warning": "No disk identifier is loaded for the provided disk."}), 404
 
     return jsonify({"disk_identifier": disk_identifier, "path": disk_root_path}), 200
+
+
+@app.get("/api/whoareu")
+def who_are_you() -> tuple:
+    """Return the universal disk identifier for this installation."""
+    if not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str) or not UNIVERSAL_DISK_IDENTIFIER_ID.strip():
+        return jsonify({"error": "Universal disk identifier is not configured."}), 500
+
+    return jsonify({"universaldiskidentifierid": UNIVERSAL_DISK_IDENTIFIER_ID}), 200
 
 
 @app.delete("/api/forget")
@@ -451,8 +534,8 @@ def forget(identifier_value: str | None = None) -> tuple:
     try:
         if identifier_file.exists():
             identifier_file.unlink()
-    except OSError as exc:
-        return jsonify({"error": f"Failed to delete identifier file: {exc}"}), 500
+    except OSError:
+        return jsonify({"error": "Failed to delete identifier file."}), 500
 
     _remove_disk_identifier(disk_identifier)
     _remove_disk_association(disk_root, disk_identifier)
@@ -483,8 +566,8 @@ if __name__ == "__main__":
         _initialize_service_config()
         _refresh_disk_associations()
         _start_disk_association_refresh_loop()
-    except Exception as exc:
-        logger.error(f"Failed to load configuration: {exc}")
+    except Exception:
+        logger.error("Failed to load configuration.")
         exit(1)
 
     try:
@@ -514,7 +597,7 @@ if __name__ == "__main__":
                 f"Use a port >= 1024 or run with elevated privileges."
             )
         else:
-            logger.error(f"Network binding failed: {exc}")
+            logger.error("Network binding failed.")
 
-    except Exception as exc:
-        logger.error(f"Server startup failed: {exc}")
+    except Exception:
+        logger.error("Server startup failed.")

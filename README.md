@@ -5,6 +5,7 @@ REST API for generating, storing, locating, and removing disk identifiers on a l
 ## Table of Contents
 
 - [About](#about)
+- [Use Cases](#use-cases)
 - [Features](#features)
 - [Project Structure](#project-structure)
 - [Installation](#installation)
@@ -14,7 +15,17 @@ REST API for generating, storing, locating, and removing disk identifiers on a l
 
 ## About
 
-This project provides a small Flask service for assigning a unique identifier to a disk root, looking that disk root up later, and forgetting the association when it is no longer needed. It stores persistent identifier records in `resources/identifiers.json`, writes the identifier file directly at the disk root, and refreshes the path-to-id cache on startup and every 30 seconds in the background.
+This project provides a small Flask service for assigning a unique identifier to a disk root, looking that disk root up later, and forgetting the association when it is no longer needed. It stores persistent identifier records in `resources/identifiers.json`, writes the identifier file directly at the disk root, and refreshes the path-to-id cache on startup and every 30 seconds in the background. Every API request is also restricted to the local device itself.
+
+## Use Cases
+
+DiskIdentifier is particularly useful for applications that need to:
+
+- **Track files across multiple drives:** Maintain reliable references to files and directories regardless of how many storage volumes are connected to the system, without relying on potentially volatile absolute paths.
+- **Handle detachable storage:** Work seamlessly with removable media (USB drives, external hard drives, SD cards) and network-mounted shares. The service automatically resolves disk identifiers back to current mount paths, even if a drive is unmounted and remounted.
+- **Decouple storage from paths:** Store file references using disk identifiers instead of absolute paths, making your application resilient to drive reassignments, path changes, or different mount configurations.
+
+This approach is essential for portable applications, backup systems, media management tools, and any software that needs to maintain file references across multiple, potentially detachable storage devices.
 
 ## Features
 
@@ -24,6 +35,7 @@ This project provides a small Flask service for assigning a unique identifier to
 - **Cached Lookups:** Resolve identifiers from memory without rereading every file on each request
 - **Background Refresh:** Rebuild the cache automatically at startup and on a repeating interval
 - **Local-Only Service:** Bind to the host and port defined in `resources/configuration.json`
+- **Local Device Request Check:** Reject API calls that do not originate from the machine running the service
 
 ## Project Structure
 
@@ -53,6 +65,7 @@ The code is intentionally compact:
 - `resources/configuration.json` controls the bind address, port, and universal identifier file name.
 - `resources/identifiers.json` stores the registered disk-root associations.
 - `scripts/` provides the quickest way to create the virtual environment, install dependencies, and start the server.
+- The API rejects any request that does not come from the local device.
 
 ## Installation
 
@@ -125,6 +138,13 @@ The API exposes four endpoints.
 - **What it does:** returns the disk identifier currently loaded for the provided disk root (from the in-memory cache).
 - **How it answers:** returns `200 OK` with JSON like `{"disk_identifier": "...", "path": "..."}` when an identifier is loaded. If the path is missing or invalid the endpoint returns `400`. If no identifier is loaded for the provided disk root, the endpoint returns `404` with a warning message.
 
+### `GET /api/whoareu`
+
+- **Request type:** `GET`
+- **Arguments:** none
+- **What it does:** returns the installation's `universalDiskIdentifierID` value from `resources/configuration.json`.
+- **How it answers:** returns `200 OK` with JSON like `{"universaldiskidentifierid": "..."}`.
+
 ### `DELETE /api/forget` or `DELETE /api/forget/<identifier>`
 
 - **Request type:** `DELETE`
@@ -145,6 +165,7 @@ The API exposes four endpoints.
 - `GET /api/locate` and `DELETE /api/forget` require a previously registered disk identifier.
 - The identifier file name comes from `universalDiskIdentifierID` in [resources/configuration.json](resources/configuration.json).
 - The service only recognizes identifiers that exist in `resources/identifiers.json` and the current in-memory cache.
+- All API endpoints reject requests that do not originate from the local device.
 
 ## Tech Stack
 
