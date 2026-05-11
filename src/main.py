@@ -1,0 +1,492 @@
+"""Local REST API service."""
+
+from __future__ import annotations
+
+import hashlib
+import ctypes
+import json
+import logging
+import os
+import string
+import threading
+import time
+from pathlib import Path
+
+from flask import Flask, jsonify, request
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# CONFIGURATION AND GLOBAL VARIABLES
+# ============================================================================
+
+# Service configuration (loaded from configuration.json at startup)
+SERVICE_HOST = None
+SERVICE_PORT = None
+UNIVERSAL_DISK_IDENTIFIER_ID = None
+
+IDENTIFIERS_PATH = Path(__file__).parent.parent / "resources" / "identifiers.json"
+DISK_ASSOCIATION_REFRESH_INTERVAL_SECONDS = 30
+DISK_ASSOCIATION_CACHE: dict[str, str] = {}
+DISK_ASSOCIATION_REVERSE_CACHE: dict[str, str] = {}
+DISK_ASSOCIATION_CACHE_LOCK = threading.Lock()
+
+
+# ============================================================================
+# CONFIGURATION LOADING
+# ============================================================================
+
+
+def _load_configuration() -> dict:
+    """Load configuration from resources/configuration.json."""
+    script_dir = Path(__file__).parent
+    config_path = script_dir.parent / "resources" / "configuration.json"
+    if not config_path.exists():
+        raise FileNotFoundError(
+            f"Configuration file not found at {config_path}. "
+            "Ensure resources/configuration.json exists."
+        )
+
+    try:
+        with open(config_path, "r", encoding="utf-8-sig") as f:
+            config = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Configuration file at {config_path} contains invalid JSON: {exc}"
+        ) from exc
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to read configuration file at {config_path}: {exc}"
+        ) from exc
+
+    return config
+
+
+def _save_configuration(config: dict) -> None:
+    """Persist configuration back to resources/configuration.json."""
+    script_dir = Path(__file__).parent
+    config_path = script_dir.parent / "resources" / "configuration.json"
+
+    with open(config_path, "w", encoding="utf-8") as file_handle:
+        json.dump(config, file_handle, indent=2)
+
+
+def _generate_universal_disk_identifier() -> str:
+    """Generate a hash-style identifier for this installation."""
+    return hashlib.sha256(os.urandom(32)).hexdigest()
+
+
+def _is_valid_universal_disk_identifier(value: object) -> bool:
+    """Check whether a configured universal identifier looks like a SHA-256 hex hash."""
+    if not isinstance(value, str):
+        return False
+
+    candidate = value.strip()
+    return len(candidate) == 64 and all(character in string.hexdigits for character in candidate)
+
+
+def _initialize_service_config() -> None:
+    """Load service configuration (private mode only)."""
+    global SERVICE_HOST, SERVICE_PORT, UNIVERSAL_DISK_IDENTIFIER_ID
+    config = _load_configuration()
+
+    # Always use private mode (local only)
+    private_config = config.get("private", {})
+    SERVICE_HOST = private_config.get("ip", "127.0.0.1")
+    SERVICE_PORT = private_config.get("port", 49155)
+
+    universal_identifier = config.get("universalDiskIdentifierID")
+    if not _is_valid_universal_disk_identifier(universal_identifier):
+        universal_identifier = _generate_universal_disk_identifier()
+        config["universalDiskIdentifierID"] = universal_identifier
+        _save_configuration(config)
+    else:
+        universal_identifier = universal_identifier.strip()
+
+    UNIVERSAL_DISK_IDENTIFIER_ID = universal_identifier
+
+
+def _list_available_disks() -> list[Path]:
+    """List available disk roots on the current machine."""
+    if os.name == "nt":
+        drive_mask = ctypes.windll.kernel32.GetLogicalDrives()
+        available_roots: list[Path] = []
+
+        for letter in string.ascii_uppercase:
+            if drive_mask & 1:
+                available_roots.append(Path(f"{letter}:/"))
+            drive_mask >>= 1
+
+        return available_roots
+
+    return [Path("/")]
+
+
+def _read_disk_identifier_file(disk_root: Path) -> str | None:
+    """Read the identifier hash stored at the disk root."""
+    if not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str) or not UNIVERSAL_DISK_IDENTIFIER_ID.strip():
+        return None
+
+    identifier_file = disk_root / f"{UNIVERSAL_DISK_IDENTIFIER_ID}.id"
+    try:
+        file_exists = identifier_file.exists()
+    except OSError:
+        # Some Windows drives can raise errors when media is unavailable.
+        return None
+
+    if not file_exists:
+        return None
+
+    try:
+        return identifier_file.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
+def _is_disk_root(path_value: Path) -> bool:
+    """Check whether a path points to a disk root."""
+    if os.name == "nt":
+        return bool(path_value.drive) and path_value.name == ""
+
+    return path_value == Path("/")
+
+
+def _load_allowed_disk_ids() -> set[str]:
+    """Load the allowed disk IDs from the identifiers store."""
+    identifiers_data = _load_identifiers()
+    allowed_disk_ids: set[str] = set()
+
+    for item in identifiers_data["identifiers"]:
+        if isinstance(item, str) and item.strip():
+            allowed_disk_ids.add(item.strip())
+            continue
+
+        if isinstance(item, dict):
+            for key in ("disk_id", "signature", "identifier", "id"):
+                value = item.get(key)
+                if isinstance(value, str) and value.strip():
+                    allowed_disk_ids.add(value.strip())
+                    break
+
+    return allowed_disk_ids
+
+
+def _generate_disk_identifier(disk_root: Path) -> str:
+    """Generate a new disk identifier for a disk root."""
+    signature_source = disk_root.as_posix()
+
+    try:
+        stat_result = disk_root.stat()
+    except OSError:
+        stat_result = None
+
+    if stat_result is not None:
+        signature_source = "|".join(
+            [
+                signature_source,
+                str(stat_result.st_dev),
+                str(getattr(stat_result, "st_ino", 0)),
+                str(stat_result.st_size),
+                str(stat_result.st_mtime_ns),
+                os.urandom(16).hex(),
+            ]
+        )
+    else:
+        signature_source = "|".join([signature_source, os.urandom(16).hex()])
+
+    return hashlib.sha256(signature_source.encode("utf-8")).hexdigest()
+
+
+def _persist_disk_identifier(disk_root: Path, disk_identifier: str) -> None:
+    """Persist a disk identifier in the identifiers json store."""
+    identifiers_data = _load_identifiers()
+    identifiers = identifiers_data["identifiers"]
+    identifiers.append({"path": disk_root.as_posix(), "disk_id": disk_identifier})
+
+    IDENTIFIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(IDENTIFIERS_PATH, "w", encoding="utf-8") as file_handle:
+        json.dump({"identifiers": identifiers}, file_handle, indent=2)
+
+
+def _remove_disk_identifier(disk_identifier: str) -> None:
+    """Remove a disk identifier from the identifiers json store."""
+    identifiers_data = _load_identifiers()
+    filtered_identifiers: list[object] = []
+
+    for item in identifiers_data["identifiers"]:
+        if isinstance(item, dict):
+            stored_identifier = item.get("disk_id")
+            if isinstance(stored_identifier, str) and stored_identifier == disk_identifier:
+                continue
+        elif isinstance(item, str) and item == disk_identifier:
+            continue
+
+        filtered_identifiers.append(item)
+
+    IDENTIFIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(IDENTIFIERS_PATH, "w", encoding="utf-8") as file_handle:
+        json.dump({"identifiers": filtered_identifiers}, file_handle, indent=2)
+
+
+def _cache_disk_association(disk_root: Path, disk_identifier: str) -> None:
+    """Store the association between a disk root and a disk identifier in memory."""
+    disk_root_path = disk_root.as_posix()
+    with DISK_ASSOCIATION_CACHE_LOCK:
+        DISK_ASSOCIATION_CACHE[disk_root_path] = disk_identifier
+        DISK_ASSOCIATION_REVERSE_CACHE[disk_identifier] = disk_root_path
+
+
+def _remove_disk_association(disk_root: Path, disk_identifier: str) -> None:
+    """Remove the association between a disk root and a disk identifier from memory."""
+    disk_root_path = disk_root.as_posix()
+    with DISK_ASSOCIATION_CACHE_LOCK:
+        DISK_ASSOCIATION_CACHE.pop(disk_root_path, None)
+        DISK_ASSOCIATION_REVERSE_CACHE.pop(disk_identifier, None)
+
+
+def _refresh_disk_associations() -> None:
+    """Load path-to-id associations for the current session."""
+    allowed_disk_ids = _load_allowed_disk_ids()
+    new_associations: dict[str, str] = {}
+    new_reverse_associations: dict[str, str] = {}
+
+    for disk_root in _list_available_disks():
+        try:
+            disk_identifier = _read_disk_identifier_file(disk_root)
+            if not isinstance(disk_identifier, str) or not disk_identifier.strip():
+                continue
+
+            disk_identifier = disk_identifier.strip()
+            if disk_identifier not in allowed_disk_ids:
+                continue
+
+            disk_root_path = disk_root.as_posix()
+            new_associations[disk_root_path] = disk_identifier
+            new_reverse_associations[disk_identifier] = disk_root_path
+        except OSError:
+            # Skip drive roots that are not currently readable.
+            continue
+
+    with DISK_ASSOCIATION_CACHE_LOCK:
+        DISK_ASSOCIATION_CACHE.clear()
+        DISK_ASSOCIATION_CACHE.update(new_associations)
+        DISK_ASSOCIATION_REVERSE_CACHE.clear()
+        DISK_ASSOCIATION_REVERSE_CACHE.update(new_reverse_associations)
+
+
+def _disk_association_refresh_worker() -> None:
+    """Refresh disk associations every 30 seconds without blocking the server."""
+    while True:
+        try:
+            _refresh_disk_associations()
+        except Exception as exc:
+            logger.error(f"Disk association refresh failed: {exc}")
+
+        time.sleep(DISK_ASSOCIATION_REFRESH_INTERVAL_SECONDS)
+
+
+def _start_disk_association_refresh_loop() -> None:
+    """Start the background refresh loop once at startup."""
+    refresh_thread = threading.Thread(
+        target=_disk_association_refresh_worker,
+        name="disk-association-refresh",
+        daemon=True,
+    )
+    refresh_thread.start()
+
+
+def _normalize_path_value(path_value: str) -> Path:
+    """Normalize a user-provided path value."""
+    return Path(path_value).expanduser().resolve(strict=False)
+
+
+def _load_identifiers() -> dict:
+    """Load the identifier store from disk."""
+    if not IDENTIFIERS_PATH.exists():
+        return {"identifiers": []}
+
+    try:
+        with open(IDENTIFIERS_PATH, "r", encoding="utf-8") as file_handle:
+            data = json.load(file_handle)
+    except json.JSONDecodeError:
+        return {"identifiers": []}
+
+    if not isinstance(data, dict):
+        return {"identifiers": []}
+
+    identifiers = data.get("identifiers", [])
+    if not isinstance(identifiers, list):
+        identifiers = []
+
+    return {"identifiers": identifiers}
+
+
+app = Flask(__name__)
+
+
+# ============================================================================
+# API ENDPOINTS
+# ============================================================================
+
+
+@app.post("/api/register")
+@app.post("/api/register/<path:path_value>")
+def register(path_value: str | None = None) -> tuple:
+    """Register a disk root, create its identifier file, and cache the association."""
+    if not isinstance(path_value, str) or not path_value.strip():
+        payload = request.get_json(silent=True) or {}
+        path_value = payload.get("path") if isinstance(payload, dict) else None
+
+    if not isinstance(path_value, str) or not path_value.strip():
+        return jsonify({"error": "A non-empty path is required."}), 400
+
+    disk_root = _normalize_path_value(path_value.strip())
+    if not _is_disk_root(disk_root):
+        return jsonify({"error": "The provided path must be a disk root."}), 400
+
+    if not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str) or not UNIVERSAL_DISK_IDENTIFIER_ID.strip():
+        return jsonify({"error": "Universal disk identifier is not configured."}), 500
+
+    identifier_file = disk_root / f"{UNIVERSAL_DISK_IDENTIFIER_ID}.id"
+    if identifier_file.exists():
+        return jsonify({"error": "An identifier already exists."}), 409
+
+    disk_identifier = _generate_disk_identifier(disk_root)
+
+    try:
+        identifier_file.write_text(disk_identifier, encoding="utf-8")
+        _persist_disk_identifier(disk_root, disk_identifier)
+    except OSError as exc:
+        try:
+            if identifier_file.exists():
+                identifier_file.unlink()
+        except OSError:
+            pass
+        return jsonify({"error": f"Failed to create identifier file: {exc}"}), 500
+    except Exception as exc:
+        try:
+            if identifier_file.exists():
+                identifier_file.unlink()
+        except OSError:
+            pass
+        return jsonify({"error": f"Failed to persist disk identifier: {exc}"}), 500
+
+    _cache_disk_association(disk_root, disk_identifier)
+
+    return jsonify({"disk_identifier": disk_identifier}), 201
+
+
+@app.get("/api/locate")
+@app.get("/api/locate/<string:identifier_value>")
+def locate(identifier_value: str | None = None) -> tuple:
+    """Return the cached disk root for a disk identifier."""
+    if not isinstance(identifier_value, str) or not identifier_value.strip():
+        payload = request.get_json(silent=True) or {}
+        identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
+
+    if not isinstance(identifier_value, str) or not identifier_value.strip():
+        return jsonify({"error": "A disk identifier is required."}), 400
+
+    with DISK_ASSOCIATION_CACHE_LOCK:
+        disk_root = DISK_ASSOCIATION_REVERSE_CACHE.get(identifier_value.strip())
+
+    if disk_root is None:
+        return jsonify({"error": "Disk identifier not found."}), 404
+
+    return jsonify({"path": disk_root}), 200
+
+
+@app.delete("/api/forget")
+@app.delete("/api/forget/<string:identifier_value>")
+def forget(identifier_value: str | None = None) -> tuple:
+    """Delete a disk identifier, remove cache entries, and remove its json record."""
+    if not isinstance(identifier_value, str) or not identifier_value.strip():
+        payload = request.get_json(silent=True) or {}
+        identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
+
+    if not isinstance(identifier_value, str) or not identifier_value.strip():
+        return jsonify({"error": "A disk identifier is required."}), 400
+
+    disk_identifier = identifier_value.strip()
+
+    with DISK_ASSOCIATION_CACHE_LOCK:
+        disk_root_path = DISK_ASSOCIATION_REVERSE_CACHE.get(disk_identifier)
+
+    if disk_root_path is None:
+        return jsonify({"error": "Disk identifier not found."}), 404
+
+    disk_root = Path(disk_root_path)
+    identifier_file = disk_root / f"{UNIVERSAL_DISK_IDENTIFIER_ID}.id"
+
+    try:
+        if identifier_file.exists():
+            identifier_file.unlink()
+    except OSError as exc:
+        return jsonify({"error": f"Failed to delete identifier file: {exc}"}), 500
+
+    _remove_disk_identifier(disk_identifier)
+    _remove_disk_association(disk_root, disk_identifier)
+
+    return jsonify({"status": "forgotten", "disk_identifier": disk_identifier, "path": disk_root_path}), 200
+
+
+@app.get("/api/health")
+def health() -> tuple:
+    """Health check endpoint."""
+    return jsonify({"status": "ok"}), 200
+
+
+# ============================================================================
+# APPLICATION ENTRY POINT
+# ============================================================================
+
+
+if __name__ == "__main__":
+    try:
+        # Configure logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
+
+        # Load configuration
+        _initialize_service_config()
+        _refresh_disk_associations()
+        _start_disk_association_refresh_loop()
+    except Exception as exc:
+        logger.error(f"Failed to load configuration: {exc}")
+        exit(1)
+
+    try:
+        logger.info("=" * 50)
+        logger.info("  Local API Server")
+        logger.info("=" * 50)
+        logger.info(f"Binding to: http://{SERVICE_HOST}:{SERVICE_PORT}")
+        logger.info(f"Mode: private (local only)")
+        logger.info("Server starting...")
+
+        app.run(host=SERVICE_HOST, port=SERVICE_PORT, debug=False, threaded=True)
+
+    except KeyboardInterrupt:
+        logger.info("=" * 50)
+        logger.info("  Server Stopped")
+        logger.info("=" * 50)
+
+    except OSError as exc:
+        if "Address already in use" in str(exc):
+            logger.error(
+                f"Port {SERVICE_PORT} is already in use. "
+                f"Change the port in resources/configuration.json"
+            )
+        elif "Permission denied" in str(exc):
+            logger.error(
+                f"Permission denied to bind to port {SERVICE_PORT}. "
+                f"Use a port >= 1024 or run with elevated privileges."
+            )
+        else:
+            logger.error(f"Network binding failed: {exc}")
+
+    except Exception as exc:
+        logger.error(f"Server startup failed: {exc}")
