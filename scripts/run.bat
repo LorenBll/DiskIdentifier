@@ -25,13 +25,19 @@ for /f "tokens=1,2 delims=." %%a in ("%PYTHON_VERSION%") do (
   set MINOR=%%b
 )
 
-if %MAJOR% lss 3 (
+if not defined MAJOR (
+  if %VERBOSE% equ 1 echo ERROR: Could not determine Python version.
+  popd
+  exit /b 1
+)
+
+if "%MAJOR%" lss "3" (
   if %VERBOSE% equ 1 echo ERROR: Python 3.10+ required; found %PYTHON_VERSION%
   popd
   exit /b 1
 )
 
-if %MAJOR% equ 3 if %MINOR% lss 10 (
+if "%MAJOR%" equ "3" if "%MINOR%" lss "10" (
   if %VERBOSE% equ 1 echo ERROR: Python 3.10+ required; found %PYTHON_VERSION%
   popd
   exit /b 1
@@ -52,7 +58,13 @@ if not exist ".venv" (
 )
 
 REM Activate virtual environment.
-call .venv\Scripts\activate.bat
+if not exist ".venv\Scripts\activate.bat" (
+  if %VERBOSE% equ 1 echo ERROR: Virtual environment activation script not found at .venv\Scripts\activate.bat
+  popd
+  exit /b 1
+)
+
+call ".venv\Scripts\activate.bat"
 if errorlevel 1 (
   if %VERBOSE% equ 1 echo ERROR: Failed to activate virtual environment.
   popd
@@ -75,7 +87,7 @@ if %VERBOSE% equ 1 (
 ) else (
   start /B python src/main.py >nul 2>&1
   if errorlevel 1 (
-    echo ERROR: Failed to start YouTube Downloader.
+    echo ERROR: Failed to start DiskIdentifier.
     popd
     exit /b 1
   )
