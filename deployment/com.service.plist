@@ -8,12 +8,12 @@
     
     <key>ProgramArguments</key>
     <array>
-        <string>/path/to/YoutubeDownloader/.venv/bin/python</string>
-        <string>/path/to/YoutubeDownloader/src/main.py</string>
+        <string>/path/to/DiskIdentifier/.venv/bin/python</string>
+        <string>/path/to/DiskIdentifier/src/main.py</string>
     </array>
     
     <key>WorkingDirectory</key>
-    <string>/path/to/YoutubeDownloader</string>
+    <string>/path/to/DiskIdentifier</string>
     
     <key>RunAtLoad</key>
     <true/>
@@ -26,13 +26,5 @@
     
     <key>StandardErrorPath</key>
     <string>/tmp/diskidentifier.error.log</string>
-    
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>TASK_RETENTION_MINUTES</key>
-        <string>30</string>
-        <key>TASK_CLEANUP_INTERVAL_SECONDS</key>
-        <string>60</string>
-    </dict>
 </dict>
 </plist>
