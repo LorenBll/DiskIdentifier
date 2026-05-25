@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
 import ctypes
+import hashlib
 import ipaddress
 import json
 import logging
@@ -86,7 +86,9 @@ def _is_valid_universal_disk_identifier(value: object) -> bool:
         return False
 
     candidate = value.strip()
-    return len(candidate) == 64 and all(character in string.hexdigits for character in candidate)
+    return len(candidate) == 64 and all(
+        character in string.hexdigits for character in candidate
+    )
 
 
 def _initialize_service_config() -> None:
@@ -97,7 +99,9 @@ def _initialize_service_config() -> None:
     # Service binds to loopback only.
     SERVICE_HOST = "127.0.0.1"
 
-    private_config = config.get("private") if isinstance(config.get("private"), dict) else {}
+    private_config = (
+        config.get("private") if isinstance(config.get("private"), dict) else {}
+    )
     configured_port = private_config.get("port")
     if configured_port is None:
         configured_port = config.get("port", 49157)
@@ -138,7 +142,10 @@ def _list_available_disks() -> list[Path]:
 
 def _read_disk_identifier_file(disk_root: Path) -> str | None:
     """Read the identifier hash stored at the disk root."""
-    if not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str) or not UNIVERSAL_DISK_IDENTIFIER_ID.strip():
+    if (
+        not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str)
+        or not UNIVERSAL_DISK_IDENTIFIER_ID.strip()
+    ):
         return None
 
     identifier_file = disk_root / f"{UNIVERSAL_DISK_IDENTIFIER_ID}.id"
@@ -230,7 +237,10 @@ def _remove_disk_identifier(disk_identifier: str) -> None:
     for item in identifiers_data["identifiers"]:
         if isinstance(item, dict):
             stored_identifier = item.get("disk_id")
-            if isinstance(stored_identifier, str) and stored_identifier == disk_identifier:
+            if (
+                isinstance(stored_identifier, str)
+                and stored_identifier == disk_identifier
+            ):
                 continue
         elif isinstance(item, str) and item == disk_identifier:
             continue
@@ -319,10 +329,19 @@ def _normalize_disk_root_value(path_value: str) -> Path:
 
     if os.name == "nt":
         candidate_value = candidate_value.replace("\\", "/")
-        if len(candidate_value) == 2 and candidate_value[1] == ":" and candidate_value[0].isalpha():
+        if (
+            len(candidate_value) == 2
+            and candidate_value[1] == ":"
+            and candidate_value[0].isalpha()
+        ):
             candidate_value = f"{candidate_value.upper()}/"
 
-        if len(candidate_value) != 3 or candidate_value[1] != ":" or candidate_value[2] != "/" or not candidate_value[0].isalpha():
+        if (
+            len(candidate_value) != 3
+            or candidate_value[1] != ":"
+            or candidate_value[2] != "/"
+            or not candidate_value[0].isalpha()
+        ):
             raise ValueError("The provided path must be a disk root.")
 
         for disk_root in available_roots:
@@ -368,7 +387,10 @@ def _get_local_device_addresses() -> set[str]:
             continue
 
         try:
-            local_addresses.update(address_info[4][0] for address_info in socket.getaddrinfo(candidate_name, None))
+            local_addresses.update(
+                address_info[4][0]
+                for address_info in socket.getaddrinfo(candidate_name, None)
+            )
         except OSError:
             pass
 
@@ -445,11 +467,14 @@ def register(path_value: str | None = None) -> tuple:
         disk_root = _normalize_disk_root_value(path_value)
     except (ValueError, OSError, RuntimeError):
         return jsonify({"error": "Invalid path provided."}), 400
-    
+
     if not _is_disk_root(disk_root):
         return jsonify({"error": "The provided path must be a disk root."}), 400
 
-    if not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str) or not UNIVERSAL_DISK_IDENTIFIER_ID.strip():
+    if (
+        not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str)
+        or not UNIVERSAL_DISK_IDENTIFIER_ID.strip()
+    ):
         return jsonify({"error": "Universal disk identifier is not configured."}), 500
 
     identifier_file = disk_root / f"{UNIVERSAL_DISK_IDENTIFIER_ID}.id"
@@ -487,7 +512,9 @@ def locate(identifier_value: str | None = None) -> tuple:
     """Return the cached disk root for a disk identifier."""
     if not isinstance(identifier_value, str) or not identifier_value.strip():
         payload = request.get_json(silent=True) or {}
-        identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
+        identifier_value = (
+            payload.get("disk_identifier") if isinstance(payload, dict) else None
+        )
 
     if not isinstance(identifier_value, str) or not identifier_value.strip():
         return jsonify({"error": "A disk identifier is required."}), 400
@@ -519,7 +546,7 @@ def identify(path_value: str | None = None) -> tuple:
         disk_root = _normalize_disk_root_value(path_value)
     except (ValueError, OSError, RuntimeError):
         return jsonify({"error": "Invalid path provided."}), 400
-    
+
     if not _is_disk_root(disk_root):
         return jsonify({"error": "The provided path must be a disk root."}), 400
 
@@ -528,7 +555,10 @@ def identify(path_value: str | None = None) -> tuple:
         disk_identifier = DISK_ASSOCIATION_CACHE.get(disk_root_path)
 
     if disk_identifier is None:
-        return jsonify({"warning": "No disk identifier is loaded for the provided disk."}), 404
+        return (
+            jsonify({"warning": "No disk identifier is loaded for the provided disk."}),
+            404,
+        )
 
     return jsonify({"disk_identifier": disk_identifier, "path": disk_root_path}), 200
 
@@ -536,7 +566,10 @@ def identify(path_value: str | None = None) -> tuple:
 @app.get("/api/whoareu")
 def who_are_you() -> tuple:
     """Return the universal disk identifier for this installation."""
-    if not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str) or not UNIVERSAL_DISK_IDENTIFIER_ID.strip():
+    if (
+        not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str)
+        or not UNIVERSAL_DISK_IDENTIFIER_ID.strip()
+    ):
         return jsonify({"error": "Universal disk identifier is not configured."}), 500
 
     return jsonify({"universaldiskidentifierid": UNIVERSAL_DISK_IDENTIFIER_ID}), 200
@@ -548,7 +581,9 @@ def forget(identifier_value: str | None = None) -> tuple:
     """Delete a disk identifier, remove cache entries, and remove its json record."""
     if not isinstance(identifier_value, str) or not identifier_value.strip():
         payload = request.get_json(silent=True) or {}
-        identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
+        identifier_value = (
+            payload.get("disk_identifier") if isinstance(payload, dict) else None
+        )
 
     if not isinstance(identifier_value, str) or not identifier_value.strip():
         return jsonify({"error": "A disk identifier is required."}), 400
@@ -573,7 +608,16 @@ def forget(identifier_value: str | None = None) -> tuple:
     _remove_disk_identifier(disk_identifier)
     _remove_disk_association(disk_root, disk_identifier)
 
-    return jsonify({"status": "forgotten", "disk_identifier": disk_identifier, "path": disk_root_path}), 200
+    return (
+        jsonify(
+            {
+                "status": "forgotten",
+                "disk_identifier": disk_identifier,
+                "path": disk_root_path,
+            }
+        ),
+        200,
+    )
 
 
 @app.get("/api/health")
