@@ -94,13 +94,10 @@ def _initialize_service_config() -> None:
     global SERVICE_HOST, SERVICE_PORT, UNIVERSAL_DISK_IDENTIFIER_ID
     config = _load_configuration()
 
-    # Accept both legacy top-level config and nested private config.
+    # Service binds to loopback only.
+    SERVICE_HOST = "127.0.0.1"
+
     private_config = config.get("private") if isinstance(config.get("private"), dict) else {}
-
-    configured_host = private_config.get("ip")
-    if not isinstance(configured_host, str) or not configured_host.strip():
-        configured_host = config.get("ip", "127.0.0.1")
-
     configured_port = private_config.get("port")
     if configured_port is None:
         configured_port = config.get("port", 49157)
@@ -110,7 +107,6 @@ def _initialize_service_config() -> None:
     if not isinstance(configured_port, int):
         configured_port = 49157
 
-    SERVICE_HOST = configured_host.strip() if isinstance(configured_host, str) else "127.0.0.1"
     SERVICE_PORT = configured_port
 
     universal_identifier = config.get("universalDiskIdentifierID")
@@ -363,7 +359,7 @@ def _load_identifiers() -> dict:
 
 
 def _get_local_device_addresses() -> set[str]:
-    """Collect the IP addresses assigned to the current device."""
+    """Collect the local network addresses assigned to the current device."""
     local_addresses: set[str] = set()
     candidate_names = {socket.gethostname(), socket.getfqdn()}
 

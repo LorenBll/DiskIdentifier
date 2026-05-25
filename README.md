@@ -34,7 +34,7 @@ This approach is essential for portable applications, backup systems, media mana
 - **Persistent Identifier Store:** Save registered disk/path associations in `resources/identifiers.json`
 - **Cached Lookups:** Resolve identifiers from memory without rereading every file on each request
 - **Background Refresh:** Rebuild the cache automatically at startup and on a repeating interval
-- **Local-Only Service:** Bind to the host and port defined in `resources/configuration.json`
+ - **Local-Only Service:** Bind to loopback (127.0.0.1) and the port defined in `resources/configuration.json`
 - **Local Device Request Check:** Reject API calls that do not originate from the machine running the service
 
 ## Project Structure
@@ -46,7 +46,7 @@ DiskIdentifier/
 │   ├── service.service          # systemd service example
 │   └── startup-windows.vbs      # Windows startup helper
 ├── resources/
-│   ├── configuration.json       # Host, port, and universal identifier settings
+│   ├── configuration.json       # Port and universal identifier settings (service binds to loopback)
 │   └── identifiers.json         # Persistent disk/path association store
 ├── scripts/
 │   ├── run.bat                  # Windows launcher
@@ -84,7 +84,7 @@ The code is intentionally compact:
    ```
 
 2. **Configure the service:**
-   Edit [resources/configuration.json](resources/configuration.json) and set the local bind address and port if needed. Leave `universalDiskIdentifierID` blank if you want the application to generate one automatically on first start.
+   Edit [resources/configuration.json](resources/configuration.json) and set the port if needed. The service always binds to the loopback address `127.0.0.1`. Leave `universalDiskIdentifierID` blank if you want the application to generate one automatically on first start.
 
 3. **Install dependencies:**
    - Windows: run [scripts/setup.bat](scripts/setup.bat)
@@ -108,7 +108,7 @@ The code is intentionally compact:
 
 ### Configuration Notes
 
-- `ip` and `port` in [resources/configuration.json](resources/configuration.json) control where the server binds.
+- `port` in [resources/configuration.json](resources/configuration.json) controls the port the server binds to. The server always binds to `127.0.0.1` (loopback).
 - `universalDiskIdentifierID` is the filename used for the identifier file written to disk roots. If it is empty, the service generates and saves one automatically.
 - `resources/identifiers.json` is the persistent store for registered disk/path associations.
 - The service runs locally only and refreshes the cache every 30 seconds in a daemon thread.
