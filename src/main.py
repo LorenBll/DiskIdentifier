@@ -1,4 +1,4 @@
-"""Local REST API service."""
+"""DiskIdentifier local web service."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
 
