@@ -103,12 +103,12 @@ def _initialize_service_config() -> None:
 
     configured_port = private_config.get("port")
     if configured_port is None:
-        configured_port = config.get("port", 49155)
+        configured_port = config.get("port", 49157)
 
     if isinstance(configured_port, str) and configured_port.isdigit():
         configured_port = int(configured_port)
     if not isinstance(configured_port, int):
-        configured_port = 49155
+        configured_port = 49157
 
     SERVICE_HOST = configured_host.strip() if isinstance(configured_host, str) else "127.0.0.1"
     SERVICE_PORT = configured_port
