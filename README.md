@@ -1,17 +1,19 @@
 # DiskIdentifier
 
-DiskIdentifier is a small local Flask service for creating, storing, locating, and removing disk identifiers. It writes a unique identifier file at the root of a disk, keeps a small in-memory cache for lookups, and rejects requests that do not originate from the local device.
+DiskIdentifier is a local Flask service for creating, storing, locating, and removing disk identifiers. It persists identifier associations and keeps an in-memory cache for fast lookup.
 
 ## About
 
-This project is designed for workflows that need stable references to disk roots instead of absolute paths. The service stores persistent identifier records in [resources/identifiers.json](resources/identifiers.json), refreshes its cache on startup and in the background, and binds only to `127.0.0.1` using the port in [resources/configuration.json](resources/configuration.json).
+- Scope: disk-root registration and reverse lookup by identifier.
+- Runtime model: persistent JSON association store plus background refresh loop.
+- Networking: local-only bind (`127.0.0.1`) with API-only workflow.
 
 ## Setup
 
 ### Prerequisites
 
 - Python 3.10 or newer
-- Permission to read and write the root of the disk you want to register
+- Permission to read and write the root of the target disks
 
 ### Install Dependencies
 
@@ -21,89 +23,86 @@ python -m pip install -r requirements.txt
 
 ### Configuration
 
-Edit [resources/configuration.json](resources/configuration.json) if you want to change the listening port. Leave `universalDiskIdentifierID` blank to let the service generate one on first start.
+Edit `resources/configuration.json` as needed:
+
+- `port`: TCP port used by the service
+- `universalDiskIdentifierID`: optional installation identifier (auto-generated when blank)
 
 ## Run
 
-Start the service with:
+Start with:
 
 ```bash
 python src/main.py
 ```
 
-The service now starts with structured logging and a threaded Flask server, matching the same startup wrapper used by the other projects.
-
-On Windows, you can also use:
+Windows shortcut:
 
 ```bat
 scripts\run.bat
 ```
 
+Startup behavior is consistent with the other services in this workspace: structured logging and a threaded Flask server.
+
 ## Usage
 
-### `POST /api/register` or `POST /api/register/<path>`
+### `POST /api/register` and `POST /api/register/<path>`
 
-- **Request type:** `POST`
-- **Arguments:** a disk root in the path or in a JSON body with `path`
-- **What it does:** validates that the path is a disk root, generates a unique identifier, writes the identifier file, and stores the association in `resources/identifiers.json`
-- **How it answers:** returns `201 Created` with JSON like `{"disk_identifier": "..."}`
+- Method: `POST`
+- Input: disk root path in route or JSON body
+- Behavior: validates disk root, creates identifier file, persists association
+- Response: `201 Created` with generated `disk_identifier`
 
-### `GET /api/locate` or `GET /api/locate/<identifier>`
+### `GET /api/locate` and `GET /api/locate/<identifier>`
 
-- **Request type:** `GET`
-- **Arguments:** the disk identifier in the path or in a JSON body with `disk_identifier`
-- **What it does:** looks up the identifier in the cache and returns the matching disk root path
-- **How it answers:** returns `200 OK` with JSON like `{"path": "..."}`
+- Method: `GET`
+- Input: identifier in route or JSON body
+- Behavior: resolves identifier to disk root path
+- Response: `200 OK` with `path`
 
-### `GET /api/identify` or `GET /api/identify/<path>`
+### `GET /api/identify` and `GET /api/identify/<path>`
 
-- **Request type:** `GET`
-- **Arguments:** the disk root in the path or in a JSON body with `path`
-- **What it does:** returns the identifier currently loaded for the provided disk root
-- **How it answers:** returns `200 OK` with JSON like `{"disk_identifier": "...", "path": "..."}`
+- Method: `GET`
+- Input: disk root path in route or JSON body
+- Behavior: resolves path to identifier
+- Response: `200 OK` with `disk_identifier` and `path`
 
 ### `GET /api/whoareu`
 
-- **Request type:** `GET`
-- **Arguments:** none
-- **What it does:** returns the installation's `universalDiskIdentifierID` value from [resources/configuration.json](resources/configuration.json)
-- **How it answers:** returns `200 OK` with JSON like `{"universaldiskidentifierid": "..."}`
+- Method: `GET`
+- Input: none
+- Behavior: returns configured installation identifier
+- Response: `200 OK`
 
-### `DELETE /api/forget` or `DELETE /api/forget/<identifier>`
+### `DELETE /api/forget` and `DELETE /api/forget/<identifier>`
 
-- **Request type:** `DELETE`
-- **Arguments:** the disk identifier in the path or in a JSON body with `disk_identifier`
-- **What it does:** removes the identifier file, deletes the persistent record, and clears the in-memory association
-- **How it answers:** returns `200 OK` with JSON like `{"status": "forgotten", "disk_identifier": "...", "path": "..."}`
+- Method: `DELETE`
+- Input: identifier in route or JSON body
+- Behavior: removes identifier file and persistent association
+- Response: `200 OK`
 
 ### `GET /api/health`
 
-- **Request type:** `GET`
-- **Arguments:** none
-- **What it does:** reports whether the service is running
-- **How it answers:** returns `200 OK` with JSON containing `{"status": "ok"}`
+- Method: `GET`
+- Input: none
+- Behavior: reports service availability
+- Response: `200 OK` with `status`
 
 ## Project Structure
 
 ```text
 DiskIdentifier/
 ├── deployment/
-│   ├── com.service.plist
-│   ├── service.service
-│   └── startup-windows.vbs
 ├── resources/
 │   ├── configuration.json
 │   └── identifiers.json
 ├── scripts/
-│   ├── run.bat
-│   ├── run.sh
-│   ├── setup.bat
-│   └── setup.sh
 ├── src/
 │   └── main.py
 ├── LICENSE
 ├── README.md
-└── requirements.txt
+├── requirements.txt
+└── SECURITY.md
 ```
 
 ## License
