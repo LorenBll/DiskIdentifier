@@ -1,110 +1,34 @@
 # DiskIdentifier
 
-DiskIdentifier is a local Flask service for creating, storing, locating, and removing disk identifiers. It persists identifier associations and keeps an in-memory cache for fast lookup.
+DiskIdentifier is a local disk registration service. It solves the problem of assigning persistent identifiers to disk roots so the same volume can be found, identified, or forgotten later.
 
 ## About
-
-- Scope: disk-root registration and reverse lookup by identifier.
-- Runtime model: persistent JSON association store plus background refresh loop.
-- Networking: local-only bind (`127.0.0.1`) with API-only workflow.
+DiskIdentifier is scoped to disk-root management and keeps its identifier cache in memory while persisting the universal installation ID and registered disk IDs in `resources/`. The service binds to `127.0.0.1` on port `49157` and rejects API calls that do not come from the local device.
 
 ## Setup
-
-### Prerequisites
-
-- Python 3.10 or newer
-- Permission to read and write the root of the target disks
-
-### Install Dependencies
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-### Configuration
-
-Edit `resources/configuration.json` as needed:
-
-- `port`: TCP port used by the service
-- `universalDiskIdentifierID`: optional installation identifier (auto-generated when blank)
+1. Install the Python dependencies with `pip install -r requirements.txt`.
+2. Review `resources/configuration.json` if you want to change the port or reset the universal disk identifier.
+3. Keep `resources/identifiers.json` in place so registered disk IDs can be persisted.
 
 ## Run
+1. Windows: run `scripts\run.bat`.
+2. Unix-like systems: run `bash scripts/run.sh`.
+3. Manual: run `python src/main.py` from the project root.
 
-Start with:
-
-```bash
-python src/main.py
-```
-
-Windows shortcut:
-
-```bat
-scripts\run.bat
-```
-
-Startup behavior is consistent with the other services in this workspace: structured logging and a threaded Flask server.
-
-## Usage
-
-### `POST /api/register` and `POST /api/register/<path>`
-
-- Method: `POST`
-- Input: disk root path in route or JSON body
-- Behavior: validates disk root, creates identifier file, persists association
-- Response: `201 Created` with generated `disk_identifier`
-
-### `GET /api/locate` and `GET /api/locate/<identifier>`
-
-- Method: `GET`
-- Input: identifier in route or JSON body
-- Behavior: resolves identifier to disk root path
-- Response: `200 OK` with `path`
-
-### `GET /api/identify` and `GET /api/identify/<path>`
-
-- Method: `GET`
-- Input: disk root path in route or JSON body
-- Behavior: resolves path to identifier
-- Response: `200 OK` with `disk_identifier` and `path`
-
-### `GET /api/whoareu`
-
-- Method: `GET`
-- Input: none
-- Behavior: returns configured installation identifier
-- Response: `200 OK`
-
-### `DELETE /api/forget` and `DELETE /api/forget/<identifier>`
-
-- Method: `DELETE`
-- Input: identifier in route or JSON body
-- Behavior: removes identifier file and persistent association
-- Response: `200 OK`
-
-### `GET /api/health`
-
-- Method: `GET`
-- Input: none
-- Behavior: reports service availability
-- Response: `200 OK` with `status`
-
-## Project Structure
-
-```text
-DiskIdentifier/
-├── deployment/
-├── resources/
-│   ├── configuration.json
-│   └── identifiers.json
-├── scripts/
-├── src/
-│   └── main.py
-├── LICENSE
-├── README.md
-├── requirements.txt
-└── SECURITY.md
-```
+## API Endpoints
+- `POST /api/register` - Register a disk root using a JSON body.
+- `POST /api/register/<path:path_value>` - Register a disk root from the path parameter.
+- `GET /api/locate` - Resolve a disk identifier back to its disk root.
+- `GET /api/locate/<string:identifier_value>` - Resolve a disk identifier from the path parameter.
+- `GET /api/identify` - Return the identifier for a disk root.
+- `GET /api/identify/<path:path_value>` - Return the identifier for a disk root from the path parameter.
+- `GET /api/whoareu` - Return the installation-wide universal disk identifier.
+- `DELETE /api/forget` - Remove a registered disk identifier using a JSON body.
+- `DELETE /api/forget/<string:identifier_value>` - Remove a registered disk identifier from the path parameter.
+- `GET /api/health` - Return service health.
 
 ## License
+- [LICENSE](LICENSE)
 
-This project is licensed under the terms specified in [LICENSE](LICENSE).
+## Author
+- [LorenBll](https://github.com/LorenBll)
