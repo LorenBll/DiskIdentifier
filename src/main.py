@@ -632,18 +632,16 @@ def health() -> tuple:
 
 if __name__ == "__main__":
     try:
-        # Configure logging
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         )
 
-        # Load configuration
         _initialize_service_config()
         _refresh_disk_associations()
         _start_disk_association_refresh_loop()
-    except Exception:
-        logger.error("Failed to load configuration.")
+    except Exception as exc:
+        logger.error(f"Failed to load configuration: {exc}")
         exit(1)
 
     try:
@@ -673,7 +671,7 @@ if __name__ == "__main__":
                 f"Use a port >= 1024 or run with elevated privileges."
             )
         else:
-            logger.error("Network binding failed.")
+            logger.error(f"Network binding failed: {exc}")
 
-    except Exception:
-        logger.error("Server startup failed.")
+    except Exception as exc:
+        logger.error(f"Server startup failed: {exc}")

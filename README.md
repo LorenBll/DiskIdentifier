@@ -31,6 +31,8 @@ Start the service with:
 python src/main.py
 ```
 
+The service now starts with structured logging and a threaded Flask server, matching the same startup wrapper used by the other projects.
+
 On Windows, you can also use:
 
 ```bat
