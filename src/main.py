@@ -452,12 +452,10 @@ def restrict_to_local_device() -> tuple | None:
 
 
 @app.post("/api/register")
-@app.post("/api/register/<path:path_value>")
-def register(path_value: str | None = None) -> tuple:
+def register() -> tuple:
     """Register a disk root, create its identifier file, and cache the association."""
-    if not isinstance(path_value, str) or not path_value.strip():
-        payload = request.get_json(silent=True) or {}
-        path_value = payload.get("path") if isinstance(payload, dict) else None
+    payload = request.get_json(silent=True) or {}
+    path_value = payload.get("path") if isinstance(payload, dict) else None
 
     if not isinstance(path_value, str) or not path_value.strip():
         return jsonify({"error": "A non-empty path is required."}), 400
@@ -506,14 +504,10 @@ def register(path_value: str | None = None) -> tuple:
 
 
 @app.get("/api/locate")
-@app.get("/api/locate/<string:identifier_value>")
-def locate(identifier_value: str | None = None) -> tuple:
+def locate() -> tuple:
     """Return the cached disk root for a disk identifier."""
-    if not isinstance(identifier_value, str) or not identifier_value.strip():
-        payload = request.get_json(silent=True) or {}
-        identifier_value = (
-            payload.get("disk_identifier") if isinstance(payload, dict) else None
-        )
+    payload = request.get_json(silent=True) or {}
+    identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
 
     if not isinstance(identifier_value, str) or not identifier_value.strip():
         return jsonify({"error": "A disk identifier is required."}), 400
@@ -528,15 +522,13 @@ def locate(identifier_value: str | None = None) -> tuple:
 
 
 @app.get("/api/identify")
-@app.get("/api/identify/<path:path_value>")
-def identify(path_value: str | None = None) -> tuple:
+def identify() -> tuple:
     """Return the disk identifier for a provided disk root path.
 
     If the disk does not have a loaded identifier, respond with a warning.
     """
-    if not isinstance(path_value, str) or not path_value.strip():
-        payload = request.get_json(silent=True) or {}
-        path_value = payload.get("path") if isinstance(payload, dict) else None
+    payload = request.get_json(silent=True) or {}
+    path_value = payload.get("path") if isinstance(payload, dict) else None
 
     if not isinstance(path_value, str) or not path_value.strip():
         return jsonify({"error": "A non-empty path is required."}), 400
@@ -575,14 +567,10 @@ def who_are_you() -> tuple:
 
 
 @app.delete("/api/forget")
-@app.delete("/api/forget/<string:identifier_value>")
-def forget(identifier_value: str | None = None) -> tuple:
+def forget() -> tuple:
     """Delete a disk identifier, remove cache entries, and remove its json record."""
-    if not isinstance(identifier_value, str) or not identifier_value.strip():
-        payload = request.get_json(silent=True) or {}
-        identifier_value = (
-            payload.get("disk_identifier") if isinstance(payload, dict) else None
-        )
+    payload = request.get_json(silent=True) or {}
+    identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
 
     if not isinstance(identifier_value, str) or not identifier_value.strip():
         return jsonify({"error": "A disk identifier is required."}), 400
