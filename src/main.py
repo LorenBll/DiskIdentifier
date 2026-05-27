@@ -610,7 +610,26 @@ def forget() -> tuple:
 @app.get("/api/health")
 def health() -> tuple:
     """Health check endpoint."""
-    return jsonify({"status": "ok"}), 200
+    local_ips = sorted(_get_local_device_addresses())
+    primary_ip = next(
+        (address for address in local_ips if address not in {"127.0.0.1", "::1"}),
+        "127.0.0.1",
+    )
+
+    return (
+        jsonify(
+            {
+                "status": "ok",
+                "service": "DiskIdentifier",
+                "bind_address": SERVICE_HOST,
+                "port": SERVICE_PORT,
+                "hostname": socket.gethostname(),
+                "primary_ip": primary_ip,
+                "local_ips": local_ips,
+            }
+        ),
+        200,
+    )
 
 
 # ============================================================================

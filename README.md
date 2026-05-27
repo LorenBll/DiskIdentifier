@@ -81,7 +81,18 @@ Service health check.
 
 - Body: none
 - Returns:
-	- `200` -> `{ "status": "ok" }`
+	- `200` ->
+		```json
+		{
+			"status": "ok",
+			"service": "DiskIdentifier",
+			"bind_address": "127.0.0.1",
+			"port": 49157,
+			"hostname": "workstation-name",
+			"primary_ip": "192.168.1.50",
+			"local_ips": ["127.0.0.1", "::1", "192.168.1.50"]
+		}
+		```
 
 ## License
 - [LICENSE](LICENSE)
