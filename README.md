@@ -9,6 +9,7 @@ DiskIdentifier is scoped to disk-root management and keeps its identifier cache 
 1. Install the Python dependencies with `pip install -r requirements.txt`.
 2. Review `resources/configuration.json` if you want to change the port or reset the universal disk identifier.
 3. Keep `resources/identifiers.json` in place so registered disk IDs can be persisted.
+4. Leave the project structure intact so the service can find `resources/` and `src/`.
 
 ## Run
 1. Windows: run `scripts\run.bat`.
