@@ -20,8 +20,9 @@ DiskIdentifier is scoped to disk-root management and keeps its identifier cache 
 
 All endpoints are local-device only. Requests from non-local addresses are rejected with:
 - `403` -> `{ "error": "Local device access only." }`
+- All endpoints also support `OPTIONS`; `GET` endpoints additionally support `HEAD`.
 
-### `POST /api/register`
+### `POST /api/register` (also `OPTIONS`)
 Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, and stores the association.
 
 - Body (JSON object):
@@ -36,7 +37,7 @@ Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, 
 	- `500` -> `{ "error": "Failed to create identifier file." }`
 	- `500` -> `{ "error": "Failed to persist disk identifier." }`
 
-### `GET /api/locate`
+### `GET /api/locate` (also `HEAD`, `OPTIONS`)
 Resolves a disk identifier to its cached disk-root path.
 
 - Body (JSON object):
@@ -46,7 +47,7 @@ Resolves a disk identifier to its cached disk-root path.
 	- `400` -> `{ "error": "A disk identifier is required." }`
 	- `404` -> `{ "error": "Disk identifier not found." }`
 
-### `GET /api/identify`
+### `GET /api/identify` (also `HEAD`, `OPTIONS`)
 Resolves a disk root to its loaded disk identifier.
 
 - Body (JSON object):
@@ -58,7 +59,7 @@ Resolves a disk root to its loaded disk identifier.
 	- `400` -> `{ "error": "The provided path must be a disk root." }`
 	- `404` -> `{ "warning": "No disk identifier is loaded for the provided disk." }`
 
-### `GET /api/whoareu`
+### `GET /api/whoareu` (also `HEAD`, `OPTIONS`)
 Returns the installation-wide universal disk identifier key name.
 
 - Body: none
@@ -66,7 +67,7 @@ Returns the installation-wide universal disk identifier key name.
 	- `200` -> `{ "universaldiskidentifierid": "<universal-id-name>" }`
 	- `500` -> `{ "error": "Universal disk identifier is not configured." }`
 
-### `DELETE /api/forget`
+### `DELETE /api/forget` (also `OPTIONS`)
 Deletes a registered disk identifier, removes its identifier file from disk root, and removes cache/persistence entries.
 
 - Body (JSON object):
@@ -77,7 +78,7 @@ Deletes a registered disk identifier, removes its identifier file from disk root
 	- `404` -> `{ "error": "Disk identifier not found." }`
 	- `500` -> `{ "error": "Failed to delete identifier file." }`
 
-### `GET /api/health`
+### `GET /api/health` (also `HEAD`, `OPTIONS`)
 Service health check.
 
 - Body: none

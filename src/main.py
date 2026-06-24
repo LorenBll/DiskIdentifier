@@ -446,14 +446,32 @@ def restrict_to_local_device() -> tuple | None:
     return None
 
 
+def _options_response(allowed_methods: list[str]) -> tuple:
+    """Return an OPTIONS response with allowed methods."""
+    response = jsonify({})
+    response.headers["Allow"] = ", ".join(allowed_methods)
+    response.headers["Access-Control-Allow-Methods"] = ", ".join(allowed_methods)
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response, 200
+
+
+def _head_response() -> tuple:
+    """Return a HEAD response with no body."""
+    response = jsonify({})
+    return response, 200
+
+
 # ============================================================================
 # API ENDPOINTS
 # ============================================================================
 
 
-@app.post("/api/register")
+@app.route("/api/register", methods=["POST", "OPTIONS"])
 def register() -> tuple:
     """Register a disk root, create its identifier file, and cache the association."""
+    if request.method == "OPTIONS":
+        return _options_response(["POST", "OPTIONS"])
+
     payload = request.get_json(silent=True) or {}
     path_value = payload.get("path") if isinstance(payload, dict) else None
 
@@ -503,9 +521,14 @@ def register() -> tuple:
     return jsonify({"disk_identifier": disk_identifier}), 201
 
 
-@app.get("/api/locate")
+@app.route("/api/locate", methods=["GET", "HEAD", "OPTIONS"])
 def locate() -> tuple:
     """Return the cached disk root for a disk identifier."""
+    if request.method == "OPTIONS":
+        return _options_response(["GET", "HEAD", "OPTIONS"])
+    if request.method == "HEAD":
+        return _head_response()
+
     payload = request.get_json(silent=True) or {}
     identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
 
@@ -521,12 +544,17 @@ def locate() -> tuple:
     return jsonify({"path": disk_root}), 200
 
 
-@app.get("/api/identify")
+@app.route("/api/identify", methods=["GET", "HEAD", "OPTIONS"])
 def identify() -> tuple:
     """Return the disk identifier for a provided disk root path.
 
     If the disk does not have a loaded identifier, respond with a warning.
     """
+    if request.method == "OPTIONS":
+        return _options_response(["GET", "HEAD", "OPTIONS"])
+    if request.method == "HEAD":
+        return _head_response()
+
     payload = request.get_json(silent=True) or {}
     path_value = payload.get("path") if isinstance(payload, dict) else None
 
@@ -554,9 +582,14 @@ def identify() -> tuple:
     return jsonify({"disk_identifier": disk_identifier, "path": disk_root_path}), 200
 
 
-@app.get("/api/whoareu")
+@app.route("/api/whoareu", methods=["GET", "HEAD", "OPTIONS"])
 def who_are_you() -> tuple:
     """Return the universal disk identifier for this installation."""
+    if request.method == "OPTIONS":
+        return _options_response(["GET", "HEAD", "OPTIONS"])
+    if request.method == "HEAD":
+        return _head_response()
+
     if (
         not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str)
         or not UNIVERSAL_DISK_IDENTIFIER_ID.strip()
@@ -566,9 +599,12 @@ def who_are_you() -> tuple:
     return jsonify({"universaldiskidentifierid": UNIVERSAL_DISK_IDENTIFIER_ID}), 200
 
 
-@app.delete("/api/forget")
+@app.route("/api/forget", methods=["DELETE", "OPTIONS"])
 def forget() -> tuple:
     """Delete a disk identifier, remove cache entries, and remove its json record."""
+    if request.method == "OPTIONS":
+        return _options_response(["DELETE", "OPTIONS"])
+
     payload = request.get_json(silent=True) or {}
     identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
 
@@ -607,9 +643,14 @@ def forget() -> tuple:
     )
 
 
-@app.get("/api/health")
+@app.route("/api/health", methods=["GET", "HEAD", "OPTIONS"])
 def health() -> tuple:
     """Health check endpoint."""
+    if request.method == "OPTIONS":
+        return _options_response(["GET", "HEAD", "OPTIONS"])
+    if request.method == "HEAD":
+        return _head_response()
+
     local_ips = sorted(_get_local_device_addresses())
     primary_ip = next(
         (address for address in local_ips if address not in {"127.0.0.1", "::1"}),
