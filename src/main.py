@@ -16,6 +16,8 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request
 
+from models import PostResponse
+
 logger = logging.getLogger(__name__)
 
 
@@ -441,7 +443,7 @@ app = Flask(__name__)
 def restrict_to_local_device() -> tuple | None:
     """Reject requests that do not originate from the local device."""
     if request.path.startswith("/api/") and not _is_local_request():
-        return jsonify({"error": "Local device access only."}), 403
+        return _error_response("Local device access only.", 403)
 
     return None
 
@@ -461,6 +463,35 @@ def _head_response() -> tuple:
     return response, 200
 
 
+def _error_response(message: str, status_code: int = 400) -> tuple:
+    """Return a JSON error response using PostResponse model."""
+    data = {"error": message}
+    body = json.dumps(data)
+    resp = PostResponse(
+        status_code=status_code,
+        reason="error",
+        body=body,
+        body_size=len(body),
+        headers={"Content-Type": "application/json"},
+        json_body=data,
+    )
+    return jsonify(resp.json_body), resp.status_code
+
+
+def _success_response(data: dict, status_code: int = 200) -> tuple:
+    """Return a JSON success response using PostResponse model."""
+    body = json.dumps(data)
+    resp = PostResponse(
+        status_code=status_code,
+        reason="OK",
+        body=body,
+        body_size=len(body),
+        headers={"Content-Type": "application/json"},
+        json_body=data,
+    )
+    return jsonify(resp.json_body), resp.status_code
+
+
 # ============================================================================
 # API ENDPOINTS
 # ============================================================================
@@ -476,25 +507,25 @@ def register() -> tuple:
     path_value = payload.get("path") if isinstance(payload, dict) else None
 
     if not isinstance(path_value, str) or not path_value.strip():
-        return jsonify({"error": "A non-empty path is required."}), 400
+        return _error_response("A non-empty path is required.")
 
     try:
         disk_root = _normalize_disk_root_value(path_value)
     except (ValueError, OSError, RuntimeError):
-        return jsonify({"error": "Invalid path provided."}), 400
+        return _error_response("Invalid path provided.")
 
     if not _is_disk_root(disk_root):
-        return jsonify({"error": "The provided path must be a disk root."}), 400
+        return _error_response("The provided path must be a disk root.")
 
     if (
         not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str)
         or not UNIVERSAL_DISK_IDENTIFIER_ID.strip()
     ):
-        return jsonify({"error": "Universal disk identifier is not configured."}), 500
+        return _error_response("Universal disk identifier is not configured.", 500)
 
     identifier_file = disk_root / f"{UNIVERSAL_DISK_IDENTIFIER_ID}.id"
     if identifier_file.exists():
-        return jsonify({"error": "An identifier already exists."}), 409
+        return _error_response("An identifier already exists.", 409)
 
     disk_identifier = _generate_disk_identifier(disk_root)
 
@@ -507,18 +538,18 @@ def register() -> tuple:
                 identifier_file.unlink()
         except OSError:
             pass
-        return jsonify({"error": "Failed to create identifier file."}), 500
+        return _error_response("Failed to create identifier file.", 500)
     except Exception:
         try:
             if identifier_file.exists():
                 identifier_file.unlink()
         except OSError:
             pass
-        return jsonify({"error": "Failed to persist disk identifier."}), 500
+        return _error_response("Failed to persist disk identifier.", 500)
 
     _cache_disk_association(disk_root, disk_identifier)
 
-    return jsonify({"disk_identifier": disk_identifier}), 201
+    return _success_response({"disk_identifier": disk_identifier}, 201)
 
 
 @app.route("/api/locate", methods=["GET", "HEAD", "OPTIONS"])
@@ -533,15 +564,15 @@ def locate() -> tuple:
     identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
 
     if not isinstance(identifier_value, str) or not identifier_value.strip():
-        return jsonify({"error": "A disk identifier is required."}), 400
+        return _error_response("A disk identifier is required.")
 
     with DISK_ASSOCIATION_CACHE_LOCK:
         disk_root = DISK_ASSOCIATION_REVERSE_CACHE.get(identifier_value.strip())
 
     if disk_root is None:
-        return jsonify({"error": "Disk identifier not found."}), 404
+        return _error_response("Disk identifier not found.", 404)
 
-    return jsonify({"path": disk_root}), 200
+    return _success_response({"path": disk_root})
 
 
 @app.route("/api/identify", methods=["GET", "HEAD", "OPTIONS"])
@@ -559,27 +590,27 @@ def identify() -> tuple:
     path_value = payload.get("path") if isinstance(payload, dict) else None
 
     if not isinstance(path_value, str) or not path_value.strip():
-        return jsonify({"error": "A non-empty path is required."}), 400
+        return _error_response("A non-empty path is required.")
 
     try:
         disk_root = _normalize_disk_root_value(path_value)
     except (ValueError, OSError, RuntimeError):
-        return jsonify({"error": "Invalid path provided."}), 400
+        return _error_response("Invalid path provided.")
 
     if not _is_disk_root(disk_root):
-        return jsonify({"error": "The provided path must be a disk root."}), 400
+        return _error_response("The provided path must be a disk root.")
 
     disk_root_path = disk_root.as_posix()
     with DISK_ASSOCIATION_CACHE_LOCK:
         disk_identifier = DISK_ASSOCIATION_CACHE.get(disk_root_path)
 
     if disk_identifier is None:
-        return (
-            jsonify({"warning": "No disk identifier is loaded for the provided disk."}),
+        return _success_response(
+            {"warning": "No disk identifier is loaded for the provided disk."},
             404,
         )
 
-    return jsonify({"disk_identifier": disk_identifier, "path": disk_root_path}), 200
+    return _success_response({"disk_identifier": disk_identifier, "path": disk_root_path})
 
 
 @app.route("/api/whoareu", methods=["GET", "HEAD", "OPTIONS"])
@@ -594,9 +625,9 @@ def who_are_you() -> tuple:
         not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str)
         or not UNIVERSAL_DISK_IDENTIFIER_ID.strip()
     ):
-        return jsonify({"error": "Universal disk identifier is not configured."}), 500
+        return _error_response("Universal disk identifier is not configured.", 500)
 
-    return jsonify({"universaldiskidentifierid": UNIVERSAL_DISK_IDENTIFIER_ID}), 200
+    return _success_response({"universaldiskidentifierid": UNIVERSAL_DISK_IDENTIFIER_ID})
 
 
 @app.route("/api/forget", methods=["DELETE", "OPTIONS"])
@@ -609,7 +640,7 @@ def forget() -> tuple:
     identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
 
     if not isinstance(identifier_value, str) or not identifier_value.strip():
-        return jsonify({"error": "A disk identifier is required."}), 400
+        return _error_response("A disk identifier is required.")
 
     disk_identifier = identifier_value.strip()
 
@@ -617,7 +648,7 @@ def forget() -> tuple:
         disk_root_path = DISK_ASSOCIATION_REVERSE_CACHE.get(disk_identifier)
 
     if disk_root_path is None:
-        return jsonify({"error": "Disk identifier not found."}), 404
+        return _error_response("Disk identifier not found.", 404)
 
     disk_root = Path(disk_root_path)
     identifier_file = disk_root / f"{UNIVERSAL_DISK_IDENTIFIER_ID}.id"
@@ -626,20 +657,17 @@ def forget() -> tuple:
         if identifier_file.exists():
             identifier_file.unlink()
     except OSError:
-        return jsonify({"error": "Failed to delete identifier file."}), 500
+        return _error_response("Failed to delete identifier file.", 500)
 
     _remove_disk_identifier(disk_identifier)
     _remove_disk_association(disk_root, disk_identifier)
 
-    return (
-        jsonify(
-            {
-                "status": "forgotten",
-                "disk_identifier": disk_identifier,
-                "path": disk_root_path,
-            }
-        ),
-        200,
+    return _success_response(
+        {
+            "status": "forgotten",
+            "disk_identifier": disk_identifier,
+            "path": disk_root_path,
+        }
     )
 
 
@@ -657,19 +685,16 @@ def health() -> tuple:
         "127.0.0.1",
     )
 
-    return (
-        jsonify(
-            {
-                "status": "ok",
-                "service": "DiskIdentifier",
-                "bind_address": SERVICE_HOST,
-                "port": SERVICE_PORT,
-                "hostname": socket.gethostname(),
-                "primary_ip": primary_ip,
-                "local_ips": local_ips,
-            }
-        ),
-        200,
+    return _success_response(
+        {
+            "status": "ok",
+            "service": "DiskIdentifier",
+            "bind_address": SERVICE_HOST,
+            "port": SERVICE_PORT,
+            "hostname": socket.gethostname(),
+            "primary_ip": primary_ip,
+            "local_ips": local_ips,
+        }
     )
 
 
