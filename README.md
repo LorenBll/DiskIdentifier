@@ -21,6 +21,7 @@ DiskIdentifier is scoped to disk-root management and keeps its identifier cache 
 All endpoints are local-device only. Requests from non-local addresses are rejected with:
 - `403` -> `{ "error": "Local device access only." }`
 - All endpoints also support `HEAD` and `OPTIONS`.
+- API responses use `Connection: close` (non-persistent connections).
 
 ### `POST /api/register` (also `HEAD`, `OPTIONS`)
 Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, and stores the association.

@@ -463,6 +463,16 @@ def _head_response() -> tuple:
     return response, 200
 
 
+@app.after_request
+def set_connection_header(response):
+    content_type = response.headers.get("Content-Type", "")
+    if content_type.startswith("text/html"):
+        response.headers["Connection"] = "keep-alive"
+    else:
+        response.headers["Connection"] = "close"
+    return response
+
+
 def _error_response(message: str, status_code: int = 400) -> tuple:
     """Return a JSON error response using PostResponse model."""
     data = {"error": message}
