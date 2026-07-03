@@ -10,7 +10,7 @@ DiskIdentifier is scoped to disk-root management and keeps its identifier cache 
 This service can optionally register with [PortHandler](https://www.github.com/LorenBll/PortHandler) for service discovery, but does not depend on it. Set `porthandlerEnabled` in `resources/configuration.json` to control this behavior.
 
 ## Setup
-1. Install the Python dependencies with `pip install -r requirements.txt`.
+1. `pip install -r requirements.txt`.
 2. Review `resources/configuration.json` if you want to change the port or reset the universal disk identifier.
 3. Keep `resources/identifiers.json` in place so registered disk IDs can be persisted.
 4. Leave the project structure intact so the service can find `resources/` and `src/`.
@@ -20,12 +20,14 @@ This service can optionally register with [PortHandler](https://www.github.com/L
 2. Unix-like systems: run `bash scripts/run.sh`.
 3. Manual: run `python src/main.py` from the project root.
 
-## API Endpoints
+## Access Control
 
-All endpoints are local-device only. Requests from non-local addresses are rejected with:
+All `/api/*` endpoints are local-device only. Requests from non-local addresses are rejected with:
 - `403` -> `{ "error": "Local device access only." }`
 - All endpoints also support `HEAD` and `OPTIONS`.
 - API responses use `Connection: close` (non-persistent connections).
+
+## API Endpoints
 
 ### `POST /api/register` (also `HEAD`, `OPTIONS`)
 Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, and stores the association.
