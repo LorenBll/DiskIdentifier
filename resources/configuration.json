@@ -1,4 +1,6 @@
 {
   "port": 49157,
-  "universalDiskIdentifierID": ""
+  "porthandlerEnabled": true,
+  "porthandlerPort": 49155,
+  "universalDiskIdentifierID": "7118cd7ff1fbf57b6e24c8e7911b4976dfcf5e0d517fc00d9bc0968fb3ac73bf"
 }

@@ -5,6 +5,10 @@ DiskIdentifier is a local disk registration service. It solves the problem of as
 ## About
 DiskIdentifier is scoped to disk-root management and keeps its identifier cache in memory while persisting the universal installation ID and registered disk IDs in `resources/`. The service binds to `127.0.0.1` on port `49157` and rejects API calls that do not come from the local device.
 
+## Integration
+
+This service can optionally register with [PortHandler](https://www.github.com/LorenBll/PortHandler) for service discovery, but does not depend on it. Set `porthandlerEnabled` in `resources/configuration.json` to control this behavior.
+
 ## Setup
 1. Install the Python dependencies with `pip install -r requirements.txt`.
 2. Review `resources/configuration.json` if you want to change the port or reset the universal disk identifier.

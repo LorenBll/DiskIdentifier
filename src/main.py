@@ -14,6 +14,9 @@ import threading
 import time
 from pathlib import Path
 
+import urllib.error
+import urllib.request
+
 from flask import Flask, jsonify, request
 
 from models import PostResponse
@@ -35,6 +38,8 @@ DISK_ASSOCIATION_REFRESH_INTERVAL_SECONDS = 30
 DISK_ASSOCIATION_CACHE: dict[str, str] = {}
 DISK_ASSOCIATION_REVERSE_CACHE: dict[str, str] = {}
 DISK_ASSOCIATION_CACHE_LOCK = threading.Lock()
+
+PORTHANDLER_HASH = None
 
 
 # ============================================================================
@@ -717,6 +722,41 @@ def health() -> tuple:
 # ============================================================================
 
 
+def _register_with_porthandler() -> None:
+    global PORTHANDLER_HASH
+    config = _load_configuration()
+    ph_port = config.get("porthandlerPort", 49155)
+
+    for attempt in range(3):
+        time.sleep(15)
+        try:
+            payload = json.dumps({
+                "name": "DiskIdentifier",
+                "port": SERVICE_PORT,
+                "starting_script": str(Path(__file__).resolve()),
+                "pid": os.getpid(),
+            }).encode("utf-8")
+
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{ph_port}/api/register",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 201:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    PORTHANDLER_HASH = data.get("hash")
+                    logger.info(f"Registered with PortHandler, hash={PORTHANDLER_HASH[:16]}...")
+                    return
+
+        except Exception as exc:
+            logger.warning(f"PortHandler registration attempt {attempt + 1}/3 failed: {exc}")
+
+    logger.warning("PortHandler registration failed after 3 attempts, starting without registration")
+
+
 if __name__ == "__main__":
     try:
         logging.basicConfig(
@@ -730,6 +770,15 @@ if __name__ == "__main__":
     except Exception as exc:
         logger.error(f"Failed to load configuration: {exc}")
         exit(1)
+
+    config = _load_configuration()
+    if config.get("porthandlerEnabled", True):
+        registration_thread = threading.Thread(
+            target=_register_with_porthandler,
+            name="porthandler-registration",
+            daemon=True,
+        )
+        registration_thread.start()
 
     try:
         logger.info("=" * 50)
