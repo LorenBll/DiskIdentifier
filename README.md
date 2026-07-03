@@ -20,9 +20,9 @@ DiskIdentifier is scoped to disk-root management and keeps its identifier cache 
 
 All endpoints are local-device only. Requests from non-local addresses are rejected with:
 - `403` -> `{ "error": "Local device access only." }`
-- All endpoints also support `OPTIONS`; `GET` endpoints additionally support `HEAD`.
+- All endpoints also support `HEAD` and `OPTIONS`.
 
-### `POST /api/register` (also `OPTIONS`)
+### `POST /api/register` (also `HEAD`, `OPTIONS`)
 Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, and stores the association.
 
 - Body (JSON object):
@@ -67,7 +67,7 @@ Returns the installation-wide universal disk identifier key name.
 	- `200` -> `{ "universaldiskidentifierid": "<universal-id-name>" }`
 	- `500` -> `{ "error": "Universal disk identifier is not configured." }`
 
-### `DELETE /api/forget` (also `OPTIONS`)
+### `DELETE /api/forget` (also `HEAD`, `OPTIONS`)
 Deletes a registered disk identifier, removes its identifier file from disk root, and removes cache/persistence entries.
 
 - Body (JSON object):

@@ -497,11 +497,13 @@ def _success_response(data: dict, status_code: int = 200) -> tuple:
 # ============================================================================
 
 
-@app.route("/api/register", methods=["POST", "OPTIONS"])
+@app.route("/api/register", methods=["POST", "HEAD", "OPTIONS"])
 def register() -> tuple:
     """Register a disk root, create its identifier file, and cache the association."""
     if request.method == "OPTIONS":
-        return _options_response(["POST", "OPTIONS"])
+        return _options_response(["POST", "HEAD", "OPTIONS"])
+    if request.method == "HEAD":
+        return _head_response()
 
     payload = request.get_json(silent=True) or {}
     path_value = payload.get("path") if isinstance(payload, dict) else None
@@ -630,11 +632,13 @@ def who_are_you() -> tuple:
     return _success_response({"universaldiskidentifierid": UNIVERSAL_DISK_IDENTIFIER_ID})
 
 
-@app.route("/api/forget", methods=["DELETE", "OPTIONS"])
+@app.route("/api/forget", methods=["DELETE", "HEAD", "OPTIONS"])
 def forget() -> tuple:
     """Delete a disk identifier, remove cache entries, and remove its json record."""
     if request.method == "OPTIONS":
-        return _options_response(["DELETE", "OPTIONS"])
+        return _options_response(["DELETE", "HEAD", "OPTIONS"])
+    if request.method == "HEAD":
+        return _head_response()
 
     payload = request.get_json(silent=True) or {}
     identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
