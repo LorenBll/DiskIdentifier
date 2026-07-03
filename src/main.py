@@ -698,12 +698,6 @@ def health() -> tuple:
     if request.method == "HEAD":
         return _head_response()
 
-    local_ips = sorted(_get_local_device_addresses())
-    primary_ip = next(
-        (address for address in local_ips if address not in {"127.0.0.1", "::1"}),
-        "127.0.0.1",
-    )
-
     return _success_response(
         {
             "status": "ok",
@@ -711,8 +705,6 @@ def health() -> tuple:
             "bind_address": SERVICE_HOST,
             "port": SERVICE_PORT,
             "hostname": socket.gethostname(),
-            "primary_ip": primary_ip,
-            "local_ips": local_ips,
         }
     )
 
