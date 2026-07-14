@@ -9,8 +9,18 @@ DiskIdentifier is scoped to disk-root management and keeps its identifier cache 
 
 This service can optionally register with [PortHandler](https://www.github.com/LorenBll/PortHandler) for service discovery, but does not depend on it. Set `porthandlerEnabled` in `resources/configuration.json` to control this behavior.
 
+## Background Refresh
+
+Disk associations are refreshed from disk every 30 seconds in a background thread. This ensures the in-memory cache stays in sync with the `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` files present on mounted volumes and the allowed identifiers listed in `resources/identifiers.json`.
+
 ## Setup
-1. `pip install -r requirements.txt`.
+
+### Quick setup
+1. Windows: run `scripts\setup.bat` (creates a virtual environment and installs dependencies).
+2. Unix-like systems: run `bash scripts/setup.sh`.
+
+### Manual setup
+1. `pip install -r requirements.txt` (after creating and activating a virtual environment).
 2. Review `resources/configuration.json` if you want to change the port or reset the universal disk identifier.
 3. Keep `resources/identifiers.json` in place so registered disk IDs can be persisted.
 4. Leave the project structure intact so the service can find `resources/` and `src/`.
@@ -18,7 +28,16 @@ This service can optionally register with [PortHandler](https://www.github.com/L
 ## Run
 1. Windows: run `scripts\run.bat`.
 2. Unix-like systems: run `bash scripts/run.sh`.
-3. Manual: run `python src/main.py` from the project root.
+3. Manual: run `python src/main.py` from the project root (with the virtual environment activated).
+
+## Auto-Startup
+
+The `deployment/` directory contains auto-startup configurations for each platform:
+- **Windows**: `startup-windows.vbs` — place in the Startup folder or use as a scheduled task.
+- **Linux**: `service.service` — systemd unit file.
+- **macOS**: `com.service.plist` — launchd property list.
+
+Update the paths in these files to match your installation before deploying.
 
 ## Access Control
 
