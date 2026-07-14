@@ -120,6 +120,8 @@ Service health check.
 		}
 		```
 
+---
+
 ## License
 - [LICENSE](LICENSE)
 
