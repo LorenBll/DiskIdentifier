@@ -122,6 +122,9 @@ Service health check.
 
 ---
 
+## Support
+- Open an issue on [GitHub](https://github.com/LorenBll/DiskIdentifier/issues) for bug reports, feature requests, or help.
+
 ## License
 - [LICENSE](LICENSE)
 
