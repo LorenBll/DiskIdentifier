@@ -39,7 +39,7 @@ DISK_ASSOCIATION_CACHE: dict[str, str] = {}
 DISK_ASSOCIATION_REVERSE_CACHE: dict[str, str] = {}
 DISK_ASSOCIATION_CACHE_LOCK = threading.Lock()
 
-PORTHANDLER_HASH = None
+SERVICEHANDLER_HASH = None
 
 
 # ============================================================================
@@ -714,8 +714,8 @@ def health() -> tuple:
 # ============================================================================
 
 
-def _porthandler_keepalive_forever() -> None:
-    global PORTHANDLER_HASH
+def _servicehandler_keepalive_forever() -> None:
+    global SERVICEHANDLER_HASH
     config = _load_configuration()
     ph_port = config.get("porthandlerPort", 49155)
     service_name = "DiskIdentifier"
@@ -734,10 +734,10 @@ def _porthandler_keepalive_forever() -> None:
                     continue
         except urllib.error.HTTPError as exc:
             if exc.code != 404:
-                logger.warning(f"PortHandler question failed (HTTP {exc.code})")
+                logger.warning(f"ServiceHandler question failed (HTTP {exc.code})")
                 continue
         except Exception as exc:
-            logger.warning(f"PortHandler question failed: {exc}")
+            logger.warning(f"ServiceHandler question failed: {exc}")
             continue
 
         try:
@@ -746,6 +746,8 @@ def _porthandler_keepalive_forever() -> None:
                 "port": SERVICE_PORT,
                 "starting_script": str(Path(__file__).resolve().parent.parent / "scripts" / ("run.bat" if os.name == "nt" else "run.sh")),
                 "pid": os.getpid(),
+                "bind_address": SERVICE_HOST,
+                "hostname": socket.gethostname(),
             }).encode("utf-8")
 
             req = urllib.request.Request(
@@ -758,10 +760,10 @@ def _porthandler_keepalive_forever() -> None:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 if resp.status == 201:
                     data = json.loads(resp.read().decode("utf-8"))
-                    PORTHANDLER_HASH = data.get("hash")
-                    logger.info(f"Registered with PortHandler, hash={PORTHANDLER_HASH[:16]}...")
+                    SERVICEHANDLER_HASH = data.get("hash")
+                    logger.info(f"Registered with ServiceHandler, hash={SERVICEHANDLER_HASH[:16]}...")
         except Exception as exc:
-            logger.warning(f"PortHandler registration attempt failed: {exc}")
+            logger.warning(f"ServiceHandler registration attempt failed: {exc}")
 
 
 if __name__ == "__main__":
@@ -780,12 +782,12 @@ if __name__ == "__main__":
 
     config = _load_configuration()
     if config.get("porthandlerEnabled", True):
-        porthandler_thread = threading.Thread(
-            target=_porthandler_keepalive_forever,
-            name="porthandler-keepalive",
+        servicehandler_thread = threading.Thread(
+            target=_servicehandler_keepalive_forever,
+            name="servicehandler-keepalive",
             daemon=True,
         )
-        porthandler_thread.start()
+        servicehandler_thread.start()
 
     try:
         logger.info("=" * 50)
