@@ -1,6 +1,6 @@
 {
   "port": 49157,
-  "porthandlerEnabled": true,
-  "porthandlerPort": 49155,
+  "servicehandlerEnabled": true,
+  "servicehandlerPort": 49155,
   "universalDiskIdentifierID": ""
 }

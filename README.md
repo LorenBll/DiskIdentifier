@@ -7,7 +7,7 @@ DiskIdentifier is scoped to disk-root management and keeps its identifier cache 
 
 ## Integration
 
-This service can optionally register with [ServiceHandler](https://www.github.com/LorenBll/ServiceHandler) for service discovery, but does not depend on it. Set `porthandlerEnabled` in `resources/configuration.json` to control this behavior.
+This service can optionally register with [ServiceHandler](https://www.github.com/LorenBll/ServiceHandler) for service discovery, but does not depend on it. Set `servicehandlerEnabled` in `resources/configuration.json` to control this behavior.
 
 ## Background Refresh
 

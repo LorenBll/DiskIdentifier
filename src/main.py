@@ -717,7 +717,7 @@ def health() -> tuple:
 def _servicehandler_keepalive_forever() -> None:
     global SERVICEHANDLER_HASH
     config = _load_configuration()
-    ph_port = config.get("porthandlerPort", 49155)
+    ph_port = config.get("servicehandlerPort", 49155)
     service_name = "DiskIdentifier"
 
     while True:
@@ -781,7 +781,7 @@ if __name__ == "__main__":
         exit(1)
 
     config = _load_configuration()
-    if config.get("porthandlerEnabled", True):
+    if config.get("servicehandlerEnabled", True):
         servicehandler_thread = threading.Thread(
             target=_servicehandler_keepalive_forever,
             name="servicehandler-keepalive",
