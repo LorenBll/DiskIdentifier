@@ -48,7 +48,7 @@ All `/api/*` endpoints are local-device only. Requests from non-local addresses 
 
 ## API Endpoints
 
-### `POST /api/register` (also `HEAD`, `OPTIONS`)
+### `POST /api/register/service` (also `HEAD`, `OPTIONS`)
 Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, and stores the association.
 
 - Body (JSON object):
