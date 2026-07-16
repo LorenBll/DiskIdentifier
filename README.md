@@ -44,13 +44,14 @@ Update the paths in these files to match your installation before deploying.
 All `/api/*` endpoints are local-device only. Requests from non-local addresses are rejected with:
 - `403` -> `{ "error": "Local device access only." }`
 - All endpoints also support `HEAD` and `OPTIONS`.
-- API responses use `Connection: close` (non-persistent connections).
+- API responses use `Connection: close`.
 
 ## API Endpoints
 
 ### `POST /api/register/service` (also `HEAD`, `OPTIONS`)
 Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, and stores the association.
 
+- Auth: local-device only (no API key required)
 - Body (JSON object):
 	- `path` (string, required): absolute path to a disk root to register.
 - Returns:
@@ -66,6 +67,7 @@ Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, 
 ### `GET /api/locate` (also `HEAD`, `OPTIONS`)
 Resolves a disk identifier to its cached disk-root path.
 
+- Auth: local-device only (no API key required)
 - Body (JSON object):
 	- `disk_identifier` (string, required): previously registered disk identifier.
 - Returns:
@@ -76,6 +78,7 @@ Resolves a disk identifier to its cached disk-root path.
 ### `GET /api/identify` (also `HEAD`, `OPTIONS`)
 Resolves a disk root to its loaded disk identifier.
 
+- Auth: local-device only (no API key required)
 - Body (JSON object):
 	- `path` (string, required): absolute disk-root path.
 - Returns:
@@ -88,6 +91,7 @@ Resolves a disk root to its loaded disk identifier.
 ### `GET /api/whoareu` (also `HEAD`, `OPTIONS`)
 Returns the installation-wide universal disk identifier key name.
 
+- Auth: local-device only (no API key required)
 - Body: none
 - Returns:
 	- `200` -> `{ "universaldiskidentifierid": "<universal-id-name>" }`
@@ -96,6 +100,7 @@ Returns the installation-wide universal disk identifier key name.
 ### `DELETE /api/forget` (also `HEAD`, `OPTIONS`)
 Deletes a registered disk identifier, removes its identifier file from disk root, and removes cache/persistence entries.
 
+- Auth: local-device only (no API key required)
 - Body (JSON object):
 	- `disk_identifier` (string, required): identifier to remove.
 - Returns:
@@ -107,6 +112,7 @@ Deletes a registered disk identifier, removes its identifier file from disk root
 ### `GET /api/health` (also `HEAD`, `OPTIONS`)
 Service health check.
 
+- Auth: local-device only (no API key required)
 - Body: none
 - Returns:
 	- `200` ->
