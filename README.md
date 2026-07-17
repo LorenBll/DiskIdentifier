@@ -3,36 +3,42 @@
 DiskIdentifier is a local disk registration service. It solves the problem of assigning persistent identifiers to disk roots so the same volume can be found, identified, or forgotten later.
 
 ## About
+
 DiskIdentifier is scoped to disk-root management and keeps its identifier cache in memory while persisting the universal installation ID and registered disk IDs in `resources/`. The service binds to `127.0.0.1` on port `49157` and rejects API calls that do not come from the local device.
+
+**Features:**
+
+- **Disk Registration** — assign a persistent SHA-256 identifier to any mounted disk root by writing a hidden `.id` file on the volume.
+- **Identifier Lookup** — resolve a disk identifier to its cached root path, or a root path to its loaded identifier.
+- **Universal Identifier** — each installation generates a unique universal disk identifier key name persisted in `resources/configuration.json`.
+- **Background Refresh** — disk associations are refreshed from disk every 30 seconds in a background thread, keeping the in-memory cache in sync with the `.id` files on mounted volumes.
+- **Persistence** — registered disk IDs are stored in `resources/identifiers.json` so they survive restarts.
+
+## Setup
+
+1. Windows: run `scripts\setup.bat` (creates a virtual environment and installs dependencies).
+2. Unix-like systems: run `bash scripts/setup.sh`.
+3. Manual: `pip install -r requirements.txt` (after creating and activating a virtual environment).
+4. Review `resources/configuration.json` if you want to change the port or reset the universal disk identifier.
+5. Keep `resources/identifiers.json` in place so registered disk IDs can be persisted.
+6. Leave the project structure intact so the service can find `resources/` and `src/`.
+
+## Run
+
+1. Windows: run `scripts\run.bat`.
+2. Unix-like systems: run `bash scripts/run.sh`.
+3. Manual: run `python src/main.py` from the project root (with the virtual environment activated).
 
 ## Integration
 
 This service can optionally register with [ServiceHandler](https://www.github.com/LorenBll/ServiceHandler) for service discovery, but does not depend on it. Set `servicehandlerEnabled` in `resources/configuration.json` to control this behavior.
 
-## Background Refresh
-
-Disk associations are refreshed from disk every 30 seconds in a background thread. This ensures the in-memory cache stays in sync with the `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` files present on mounted volumes and the allowed identifiers listed in `resources/identifiers.json`.
-
-## Setup
-
-### Quick setup
-1. Windows: run `scripts\setup.bat` (creates a virtual environment and installs dependencies).
-2. Unix-like systems: run `bash scripts/setup.sh`.
-
-### Manual setup
-1. `pip install -r requirements.txt` (after creating and activating a virtual environment).
-2. Review `resources/configuration.json` if you want to change the port or reset the universal disk identifier.
-3. Keep `resources/identifiers.json` in place so registered disk IDs can be persisted.
-4. Leave the project structure intact so the service can find `resources/` and `src/`.
-
-## Run
-1. Windows: run `scripts\run.bat`.
-2. Unix-like systems: run `bash scripts/run.sh`.
-3. Manual: run `python src/main.py` from the project root (with the virtual environment activated).
+When registered, DiskIdentifier also registers its API endpoints with ServiceHandler so they can be discovered by other services.
 
 ## Auto-Startup
 
 The `deployment/` directory contains auto-startup configurations for each platform:
+
 - **Windows**: `startup-windows.vbs` — place in the Startup folder or use as a scheduled task.
 - **Linux**: `service.service` — systemd unit file.
 - **macOS**: `com.service.plist` — launchd property list.
@@ -42,13 +48,14 @@ Update the paths in these files to match your installation before deploying.
 ## Access Control
 
 All `/api/*` endpoints are local-device only. Requests from non-local addresses are rejected with:
+
 - `403` -> `{ "error": "Local device access only." }`
 - All endpoints also support `HEAD` and `OPTIONS`.
 - API responses use `Connection: close`.
 
 ## API Endpoints
 
-### `POST /api/register/service` (also `HEAD`, `OPTIONS`)
+### `POST /api/register` (also `HEAD`, `OPTIONS`)
 Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, and stores the association.
 
 - Auth: local-device only (no API key required)
@@ -98,7 +105,7 @@ Returns the installation-wide universal disk identifier key name.
 	- `500` -> `{ "error": "Universal disk identifier is not configured." }`
 
 ### `DELETE /api/forget` (also `HEAD`, `OPTIONS`)
-Deletes a registered disk identifier, removes its identifier file from disk root, and removes cache/persistence entries.
+Deletes a registered disk identifier, removes its identifier file from disk root, and removes cache and persistence entries.
 
 - Auth: local-device only (no API key required)
 - Body (JSON object):

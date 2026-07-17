@@ -714,6 +714,108 @@ def health() -> tuple:
 # ============================================================================
 
 
+def _register_endpoints_with_servicehandler() -> None:
+    """Register this service's API endpoints with ServiceHandler."""
+    global SERVICEHANDLER_HASH
+    if not SERVICEHANDLER_HASH:
+        return
+
+    config = _load_configuration()
+    sh_port = config.get("servicehandlerPort", 49155)
+
+    endpoints = [
+        {
+            "verb": "POST",
+            "path": "/api/register",
+            "path_variables": [],
+            "body_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Absolute path to a disk root to register."}
+                },
+                "required": ["path"]
+            },
+            "description": "Register a disk root, create its identifier file, and cache the association.",
+        },
+        {
+            "verb": "GET",
+            "path": "/api/locate",
+            "path_variables": [],
+            "body_schema": {
+                "type": "object",
+                "properties": {
+                    "disk_identifier": {"type": "string", "description": "Previously registered disk identifier."}
+                },
+                "required": ["disk_identifier"]
+            },
+            "description": "Resolve a disk identifier to its cached disk-root path.",
+        },
+        {
+            "verb": "GET",
+            "path": "/api/identify",
+            "path_variables": [],
+            "body_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Absolute disk-root path."}
+                },
+                "required": ["path"]
+            },
+            "description": "Resolve a disk root to its loaded disk identifier.",
+        },
+        {
+            "verb": "GET",
+            "path": "/api/whoareu",
+            "path_variables": [],
+            "body_schema": {},
+            "description": "Return the installation-wide universal disk identifier key name.",
+        },
+        {
+            "verb": "DELETE",
+            "path": "/api/forget",
+            "path_variables": [],
+            "body_schema": {
+                "type": "object",
+                "properties": {
+                    "disk_identifier": {"type": "string", "description": "Identifier to remove."}
+                },
+                "required": ["disk_identifier"]
+            },
+            "description": "Delete a registered disk identifier and remove its cache and persistence entries.",
+        },
+        {
+            "verb": "GET",
+            "path": "/api/health",
+            "path_variables": [],
+            "body_schema": {},
+            "description": "Service health check with registration statistics.",
+        },
+    ]
+
+    for ep in endpoints:
+        try:
+            payload = json.dumps({
+                "hash": SERVICEHANDLER_HASH,
+                **ep
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{sh_port}/api/register/endpoint",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 201:
+                    logger.info(f"Registered endpoint: {ep['verb']} {ep['path']}")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 409:
+                logger.debug(f"Endpoint already registered: {ep['verb']} {ep['path']}")
+            else:
+                logger.warning(f"Failed to register endpoint {ep['verb']} {ep['path']} (HTTP {exc.code})")
+        except Exception as exc:
+            logger.warning(f"Failed to register endpoint {ep['verb']} {ep['path']}: {exc}")
+
+
 def _servicehandler_keepalive_forever() -> None:
     global SERVICEHANDLER_HASH
     config = _load_configuration()
@@ -762,6 +864,8 @@ def _servicehandler_keepalive_forever() -> None:
                     data = json.loads(resp.read().decode("utf-8"))
                     SERVICEHANDLER_HASH = data.get("hash")
                     logger.info(f"Registered with ServiceHandler, hash={SERVICEHANDLER_HASH[:16]}...")
+                    if SERVICEHANDLER_HASH:
+                        _register_endpoints_with_servicehandler()
         except Exception as exc:
             logger.warning(f"ServiceHandler registration attempt failed: {exc}")
 
