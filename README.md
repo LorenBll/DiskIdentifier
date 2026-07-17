@@ -129,7 +129,8 @@ Service health check.
 			"service": "DiskIdentifier",
 			"bind_address": "127.0.0.1",
 			"port": 49157,
-			"hostname": "workstation-name"
+			"hostname": "workstation-name",
+			"pid": 12345
 		}
 		```
 

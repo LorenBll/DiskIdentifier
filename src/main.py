@@ -705,6 +705,7 @@ def health() -> tuple:
             "bind_address": SERVICE_HOST,
             "port": SERVICE_PORT,
             "hostname": socket.gethostname(),
+            "pid": os.getpid(),
         }
     )
 
