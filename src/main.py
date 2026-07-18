@@ -34,10 +34,21 @@ SERVICE_PORT = None
 UNIVERSAL_DISK_IDENTIFIER_ID = None
 
 IDENTIFIERS_PATH = Path(__file__).parent.parent / "resources" / "identifiers.json"
+CONFIG_PATH = Path(__file__).parent.parent / "resources" / "configuration.json"
+
+_config_cache: dict | None = None
+
 DISK_ASSOCIATION_REFRESH_INTERVAL_SECONDS = 30
 DISK_ASSOCIATION_CACHE: dict[str, str] = {}
 DISK_ASSOCIATION_REVERSE_CACHE: dict[str, str] = {}
 DISK_ASSOCIATION_CACHE_LOCK = threading.Lock()
+
+_local_addresses_cache: set[str] | None = None
+_local_addresses_cache_time: float = 0.0
+_LOCAL_ADDRESSES_CACHE_TTL = 60.0
+
+_identifiers_cache: dict | None = None
+_identifiers_cache_mtime: float = 0.0
 
 SERVICEHANDLER_HASH = None
 
@@ -48,9 +59,12 @@ SERVICEHANDLER_HASH = None
 
 
 def _load_configuration() -> dict:
-    """Load configuration from resources/configuration.json."""
-    script_dir = Path(__file__).parent
-    config_path = script_dir.parent / "resources" / "configuration.json"
+    """Load configuration from resources/configuration.json (cached)."""
+    global _config_cache
+    if _config_cache is not None:
+        return _config_cache
+
+    config_path = CONFIG_PATH
     if not config_path.exists():
         raise FileNotFoundError(
             f"Configuration file not found at {config_path}. "
@@ -69,15 +83,15 @@ def _load_configuration() -> dict:
             f"Failed to read configuration file at {config_path}: {exc}"
         ) from exc
 
+    _config_cache = config
     return config
 
 
 def _save_configuration(config: dict) -> None:
     """Persist configuration back to resources/configuration.json."""
-    script_dir = Path(__file__).parent
-    config_path = script_dir.parent / "resources" / "configuration.json"
-
-    with open(config_path, "w", encoding="utf-8") as file_handle:
+    global _config_cache
+    _config_cache = None
+    with open(CONFIG_PATH, "w", encoding="utf-8") as file_handle:
         json.dump(config, file_handle, indent=2)
 
 
@@ -86,6 +100,8 @@ def _generate_universal_disk_identifier() -> str:
     return hashlib.sha256(os.urandom(32)).hexdigest()
 
 
+_HEXDIGITS_SET = frozenset(string.hexdigits)
+
 def _is_valid_universal_disk_identifier(value: object) -> bool:
     """Check whether a configured universal identifier looks like a SHA-256 hex hash."""
     if not isinstance(value, str):
@@ -93,7 +109,7 @@ def _is_valid_universal_disk_identifier(value: object) -> bool:
 
     candidate = value.strip()
     return len(candidate) == 64 and all(
-        character in string.hexdigits for character in candidate
+        character in _HEXDIGITS_SET for character in candidate
     )
 
 
@@ -363,28 +379,50 @@ def _normalize_disk_root_value(path_value: str) -> Path:
 
 
 def _load_identifiers() -> dict:
-    """Load the identifier store from disk."""
+    """Load the identifier store from disk (cached by mtime)."""
+    global _identifiers_cache, _identifiers_cache_mtime
+
+    if IDENTIFIERS_PATH.exists():
+        current_mtime = IDENTIFIERS_PATH.stat().st_mtime_ns
+        if _identifiers_cache is not None and current_mtime == _identifiers_cache_mtime:
+            return _identifiers_cache
+    elif _identifiers_cache is not None and _identifiers_cache_mtime < 0:
+        return _identifiers_cache
+
     if not IDENTIFIERS_PATH.exists():
-        return {"identifiers": []}
+        _identifiers_cache = {"identifiers": []}
+        _identifiers_cache_mtime = -1.0
+        return _identifiers_cache
 
     try:
         with open(IDENTIFIERS_PATH, "r", encoding="utf-8") as file_handle:
             data = json.load(file_handle)
     except json.JSONDecodeError:
-        return {"identifiers": []}
+        _identifiers_cache = {"identifiers": []}
+        _identifiers_cache_mtime = IDENTIFIERS_PATH.stat().st_mtime_ns
+        return _identifiers_cache
 
     if not isinstance(data, dict):
-        return {"identifiers": []}
+        _identifiers_cache = {"identifiers": []}
+        _identifiers_cache_mtime = IDENTIFIERS_PATH.stat().st_mtime_ns
+        return _identifiers_cache
 
     identifiers = data.get("identifiers", [])
     if not isinstance(identifiers, list):
         identifiers = []
 
-    return {"identifiers": identifiers}
+    _identifiers_cache = {"identifiers": identifiers}
+    _identifiers_cache_mtime = IDENTIFIERS_PATH.stat().st_mtime_ns
+    return _identifiers_cache
 
 
 def _get_local_device_addresses() -> set[str]:
-    """Collect the local network addresses assigned to the current device."""
+    """Collect the local network addresses assigned to the current device (cached with TTL)."""
+    global _local_addresses_cache, _local_addresses_cache_time
+    now = time.monotonic()
+    if _local_addresses_cache is not None and (now - _local_addresses_cache_time) < _LOCAL_ADDRESSES_CACHE_TTL:
+        return _local_addresses_cache
+
     local_addresses: set[str] = set()
     candidate_names = {socket.gethostname(), socket.getfqdn()}
 
@@ -421,6 +459,8 @@ def _get_local_device_addresses() -> set[str]:
             continue
 
     normalized_addresses.update({"127.0.0.1", "::1"})
+    _local_addresses_cache = normalized_addresses
+    _local_addresses_cache_time = now
     return normalized_addresses
 
 
@@ -478,33 +518,28 @@ def set_connection_header(response):
     return response
 
 
-def _error_response(message: str, status_code: int = 400) -> tuple:
-    """Return a JSON error response using PostResponse model."""
-    data = {"error": message}
+def _json_response(data: dict, status_code: int = 200, reason: str = "OK") -> tuple:
+    """Return a JSON response using PostResponse model."""
     body = json.dumps(data)
     resp = PostResponse(
         status_code=status_code,
-        reason="error",
+        reason=reason,
         body=body,
         body_size=len(body),
         headers={"Content-Type": "application/json"},
         json_body=data,
     )
     return jsonify(resp.json_body), resp.status_code
+
+
+def _error_response(message: str, status_code: int = 400) -> tuple:
+    """Return a JSON error response."""
+    return _json_response({"error": message}, status_code=status_code, reason="error")
 
 
 def _success_response(data: dict, status_code: int = 200) -> tuple:
-    """Return a JSON success response using PostResponse model."""
-    body = json.dumps(data)
-    resp = PostResponse(
-        status_code=status_code,
-        reason="OK",
-        body=body,
-        body_size=len(body),
-        headers={"Content-Type": "application/json"},
-        json_body=data,
-    )
-    return jsonify(resp.json_body), resp.status_code
+    """Return a JSON success response."""
+    return _json_response(data, status_code=status_code, reason="OK")
 
 
 # ============================================================================
