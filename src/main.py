@@ -155,14 +155,6 @@ def _load_configuration() -> dict:
     return config
 
 
-def _save_configuration(config: dict) -> None:
-    """Persist configuration back to resources/configuration.json."""
-    global _config_cache
-    _config_cache = None
-    with open(CONFIG_PATH, "w", encoding="utf-8") as file_handle:
-        json.dump(config, file_handle, indent=2)
-
-
 def _generate_universal_disk_identifier() -> str:
     """Generate a hash-style identifier for this installation."""
     return hashlib.sha256(os.urandom(32)).hexdigest()

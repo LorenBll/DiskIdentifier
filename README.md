@@ -4,7 +4,7 @@ DiskIdentifier is a local disk registration service that assigns persistent SHA-
 
 ## About
 
-- **Disk Registration** — assign a persistent SHA-256 identifier to any mounted disk root by writing a hidden `.id` file on the volume.
+- **Disk Registration** — assign a persistent SHA-256 identifier to any mounted disk root by writing an identifier (`.id`) file on the volume.
 - **Identifier Lookup** — resolve a disk identifier to its cached root path, or a root path to its loaded identifier.
 - **Universal Identifier** — each installation generates a unique universal disk identifier persisted in the `UNIVERSAL_DISK_IDENTIFIER_ID` variable in `.env`.
 - **Background Refresh** — disk associations are refreshed from disk every 30 seconds in a background thread, keeping the in-memory cache in sync with the `.id` files on mounted volumes.
