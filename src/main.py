@@ -33,8 +33,8 @@ SERVICE_HOST = None
 SERVICE_PORT = None
 UNIVERSAL_DISK_IDENTIFIER_ID = None
 
-IDENTIFIERS_PATH = Path(__file__).parent.parent / "resources" / "identifiers.json"
 CONFIG_PATH = Path(__file__).parent.parent / "resources" / "configuration.json"
+ENV_PATH = Path(__file__).parent.parent / ".env"
 
 _config_cache: dict | None = None
 
@@ -47,8 +47,76 @@ _local_addresses_cache: set[str] | None = None
 _local_addresses_cache_time: float = 0.0
 _LOCAL_ADDRESSES_CACHE_TTL = 60.0
 
+
+# ============================================================================
+# ENVIRONMENT FILE HELPERS
+# ============================================================================
+
+
+def _parse_env_file() -> dict[str, str]:
+    """Parse the .env file into a dictionary."""
+    if not ENV_PATH.exists():
+        return {}
+    env_dict: dict[str, str] = {}
+    try:
+        with open(ENV_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip()
+                if key:
+                    env_dict[key] = value
+    except OSError:
+        return {}
+    return env_dict
+
+
+def _write_env_file(env_dict: dict[str, str]) -> None:
+    """Write a dictionary of key-value pairs to the .env file."""
+    lines: list[str] = []
+    if ENV_PATH.exists():
+        try:
+            with open(ENV_PATH, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except OSError:
+            lines = []
+
+    updated_keys: set[str] = set()
+    output_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            output_lines.append(line)
+            continue
+        key, _, _ = stripped.partition("=")
+        key = key.strip()
+        if key in env_dict:
+            output_lines.append(f"{key}={env_dict[key]}\n")
+            updated_keys.add(key)
+        else:
+            output_lines.append(line)
+
+    for key, value in env_dict.items():
+        if key not in updated_keys:
+            output_lines.append(f"{key}={value}\n")
+
+    ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(ENV_PATH, "w", encoding="utf-8") as f:
+        f.writelines(output_lines)
+
+
+def _set_env_var(key: str, value: str) -> None:
+    """Set an environment variable in both os.environ and the .env file."""
+    os.environ[key] = value
+    env_dict = _parse_env_file()
+    env_dict[key] = value
+    _write_env_file(env_dict)
+
+
 _identifiers_cache: dict | None = None
-_identifiers_cache_mtime: float = 0.0
 
 SERVICEHANDLER_HASH = None
 
@@ -140,18 +208,21 @@ def _initialize_service_config() -> None:
         UNIVERSAL_DISK_IDENTIFIER_ID = env_uid.strip()
         return
 
+    env_dict = _parse_env_file()
+    file_uid = env_dict.get("UNIVERSAL_DISK_IDENTIFIER_ID")
+    if file_uid and _is_valid_universal_disk_identifier(file_uid):
+        UNIVERSAL_DISK_IDENTIFIER_ID = file_uid.strip()
+        os.environ["UNIVERSAL_DISK_IDENTIFIER_ID"] = file_uid.strip()
+        return
+
     universal_identifier = config.get("universalDiskIdentifierID")
     if not _is_valid_universal_disk_identifier(universal_identifier):
         universal_identifier = _generate_universal_disk_identifier()
-        logger.info(
-            "Generated new universal disk identifier. "
-            "Set UNIVERSAL_DISK_IDENTIFIER_ID=%s in .env for persistence.",
-            universal_identifier,
-        )
     else:
         universal_identifier = universal_identifier.strip()
 
     UNIVERSAL_DISK_IDENTIFIER_ID = universal_identifier
+    _set_env_var("UNIVERSAL_DISK_IDENTIFIER_ID", universal_identifier)
 
 
 def _list_available_disks() -> list[Path]:
@@ -249,29 +320,19 @@ def _generate_disk_identifier(disk_root: Path) -> str:
 
 
 def _persist_disk_identifier(disk_root: Path, disk_identifier: str) -> None:
-    """Persist a disk identifier in the identifiers json store."""
+    """Persist a disk identifier in the .env file."""
     global _identifiers_cache
     identifiers_data = _load_identifiers()
     identifiers = identifiers_data["identifiers"]
     identifiers.append(disk_identifier)
 
-    if os.getenv("DISK_IDENTIFIERS") is not None:
-        _identifiers_cache = {"identifiers": identifiers}
-        env_var_entry = json.dumps(identifiers)
-        logger.info(
-            "Admin: set DISK_IDENTIFIERS=%s in .env to persist via environment variable",
-            env_var_entry,
-        )
-        return
-
-    _identifiers_cache = None
-    IDENTIFIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(IDENTIFIERS_PATH, "w", encoding="utf-8") as file_handle:
-        json.dump({"identifiers": identifiers}, file_handle, indent=2)
+    _identifiers_cache = {"identifiers": identifiers}
+    env_var_value = json.dumps(identifiers)
+    _set_env_var("DISK_IDENTIFIERS", env_var_value)
 
 
 def _remove_disk_identifier(disk_identifier: str) -> None:
-    """Remove a disk identifier from the identifiers json store."""
+    """Remove a disk identifier from the .env file."""
     global _identifiers_cache
     identifiers_data = _load_identifiers()
     filtered_identifiers: list[object] = []
@@ -289,19 +350,9 @@ def _remove_disk_identifier(disk_identifier: str) -> None:
 
         filtered_identifiers.append(item)
 
-    if os.getenv("DISK_IDENTIFIERS") is not None:
-        _identifiers_cache = {"identifiers": filtered_identifiers}
-        env_var_entry = json.dumps(filtered_identifiers)
-        logger.info(
-            "Removed identifier. Admin: set DISK_IDENTIFIERS=%s in .env to persist via environment variable",
-            env_var_entry,
-        )
-        return
-
-    _identifiers_cache = None
-    IDENTIFIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(IDENTIFIERS_PATH, "w", encoding="utf-8") as file_handle:
-        json.dump({"identifiers": filtered_identifiers}, file_handle, indent=2)
+    _identifiers_cache = {"identifiers": filtered_identifiers}
+    env_var_value = json.dumps(filtered_identifiers)
+    _set_env_var("DISK_IDENTIFIERS", env_var_value)
 
 
 def _cache_disk_association(disk_root: Path, disk_identifier: str) -> None:
@@ -409,53 +460,35 @@ def _normalize_disk_root_value(path_value: str) -> Path:
 
 
 def _load_identifiers() -> dict:
-    """Load the identifier store from DISK_IDENTIFIERS env var or from disk (cached)."""
-    global _identifiers_cache, _identifiers_cache_mtime
+    """Load the identifier store from DISK_IDENTIFIERS env var or .env file (cached)."""
+    global _identifiers_cache
+
+    if _identifiers_cache is not None:
+        return _identifiers_cache
 
     env_identifiers = os.getenv("DISK_IDENTIFIERS")
     if env_identifiers is not None:
-        if _identifiers_cache is not None and _identifiers_cache_mtime < 0:
-            return _identifiers_cache
         try:
             parsed = json.loads(env_identifiers)
             if isinstance(parsed, list):
                 _identifiers_cache = {"identifiers": parsed}
-                _identifiers_cache_mtime = -1
                 return _identifiers_cache
         except json.JSONDecodeError:
             pass
 
-    if IDENTIFIERS_PATH.exists():
-        current_mtime = IDENTIFIERS_PATH.stat().st_mtime_ns
-        if _identifiers_cache is not None and current_mtime == _identifiers_cache_mtime:
-            return _identifiers_cache
-    elif _identifiers_cache is not None and _identifiers_cache_mtime < 0:
-        return _identifiers_cache
+    env_dict = _parse_env_file()
+    env_val = env_dict.get("DISK_IDENTIFIERS")
+    if env_val:
+        try:
+            parsed = json.loads(env_val)
+            if isinstance(parsed, list):
+                _identifiers_cache = {"identifiers": parsed}
+                os.environ["DISK_IDENTIFIERS"] = env_val
+                return _identifiers_cache
+        except json.JSONDecodeError:
+            pass
 
-    if not IDENTIFIERS_PATH.exists():
-        _identifiers_cache = {"identifiers": []}
-        _identifiers_cache_mtime = -1.0
-        return _identifiers_cache
-
-    try:
-        with open(IDENTIFIERS_PATH, "r", encoding="utf-8") as file_handle:
-            data = json.load(file_handle)
-    except json.JSONDecodeError:
-        _identifiers_cache = {"identifiers": []}
-        _identifiers_cache_mtime = IDENTIFIERS_PATH.stat().st_mtime_ns
-        return _identifiers_cache
-
-    if not isinstance(data, dict):
-        _identifiers_cache = {"identifiers": []}
-        _identifiers_cache_mtime = IDENTIFIERS_PATH.stat().st_mtime_ns
-        return _identifiers_cache
-
-    identifiers = data.get("identifiers", [])
-    if not isinstance(identifiers, list):
-        identifiers = []
-
-    _identifiers_cache = {"identifiers": identifiers}
-    _identifiers_cache_mtime = IDENTIFIERS_PATH.stat().st_mtime_ns
+    _identifiers_cache = {"identifiers": []}
     return _identifiers_cache
 
 

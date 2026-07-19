@@ -6,18 +6,19 @@ DiskIdentifier is a local disk registration service that assigns persistent SHA-
 
 - **Disk Registration** — assign a persistent SHA-256 identifier to any mounted disk root by writing a hidden `.id` file on the volume.
 - **Identifier Lookup** — resolve a disk identifier to its cached root path, or a root path to its loaded identifier.
-- **Universal Identifier** — each installation generates a unique universal disk identifier key name persisted in the `UNIVERSAL_DISK_IDENTIFIER_ID` environment variable or in `resources/configuration.json` as a fallback.
+- **Universal Identifier** — each installation generates a unique universal disk identifier persisted in the `UNIVERSAL_DISK_IDENTIFIER_ID` variable in `.env`.
 - **Background Refresh** — disk associations are refreshed from disk every 30 seconds in a background thread, keeping the in-memory cache in sync with the `.id` files on mounted volumes.
-- **Persistence** — registered disk IDs are loaded from the `DISK_IDENTIFIERS` environment variable or from `resources/identifiers.json` as a fallback.
+- **Persistence** — registered disk IDs are stored in the `DISK_IDENTIFIERS` variable in `.env`. Both the universal identifier and registered disk identifiers are automatically saved to `.env`.
+
+> **Note:** The hashes stored by DiskIdentifier are plain identifiers used to associate disk roots with their registered IDs. They are **not** encryption keys. ServiceHandler's API key system (stored separately in `SH_API_KEYS`) is an independent mechanism — DiskIdentifier does not manage, encrypt, or store ServiceHandler API keys.
 
 ## Setup
 
 1. Windows: run `scripts\setup.bat` (creates a virtual environment and installs dependencies).
 2. Unix-like systems: run `bash scripts/setup.sh`.
 3. Manual: `pip install -r requirements.txt` (after creating and activating a virtual environment).
-4. Review `resources/configuration.json` if you want to change the port. Set `UNIVERSAL_DISK_IDENTIFIER_ID` in `.env` to override the universal disk identifier.
-5. Set the `DISK_IDENTIFIERS` environment variable in `.env` with a JSON array of registered disk identifiers, or keep `resources/identifiers.json` in place as a fallback.
-6. Leave the project structure intact so the service can find `resources/` and `src/`.
+4. Review `resources/configuration.json` if you want to change the port.
+5. Leave the project structure intact so the service can find `resources/` and `src/`.
 
 ## Run
 
@@ -30,6 +31,8 @@ DiskIdentifier is a local disk registration service that assigns persistent SHA-
 This service can optionally register with [ServiceHandler](https://www.github.com/LorenBll/ServiceHandler) for service discovery, but does not depend on it. Set `servicehandlerEnabled` in `resources/configuration.json` to control this behavior.
 
 When registered, DiskIdentifier also registers its API endpoints with ServiceHandler so they can be discovered by other services.
+
+DiskIdentifier does not manage, encrypt, or store API keys for ServiceHandler. Its identifiers are plain disk-root hashes used solely for disk registration and lookup. ServiceHandler's API key system is an entirely independent mechanism.
 
 ## Auto-Startup
 
@@ -53,9 +56,8 @@ All endpoints also support `HEAD` and `OPTIONS`. API responses use `Connection: 
 
 | Variable | Description |
 |----------|-------------|
-| `DISK_IDENTIFIERS` | JSON array of registered disk identifier hashes. If unset, falls back to `resources/identifiers.json`. |
-| `UNIVERSAL_DISK_IDENTIFIER_ID` | 64-char hex installation identifier. If unset, falls back to `resources/configuration.json`. |
-| `API_KEY_STORE_KEY_PATH` | (ServiceHandler only) Path to the Fernet encryption key file. |
+| `DISK_IDENTIFIERS` | JSON array of registered disk identifier hashes. Automatically saved to `.env`. |
+| `UNIVERSAL_DISK_IDENTIFIER_ID` | 64-char hex installation identifier. Automatically saved to `.env`. |
 
 ## API Endpoints
 
