@@ -135,6 +135,11 @@ def _initialize_service_config() -> None:
 
     SERVICE_PORT = configured_port
 
+    env_uid = os.getenv("UNIVERSAL_DISK_IDENTIFIER_ID")
+    if env_uid and _is_valid_universal_disk_identifier(env_uid):
+        UNIVERSAL_DISK_IDENTIFIER_ID = env_uid.strip()
+        return
+
     universal_identifier = config.get("universalDiskIdentifierID")
     if not _is_valid_universal_disk_identifier(universal_identifier):
         universal_identifier = _generate_universal_disk_identifier()
