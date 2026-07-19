@@ -67,7 +67,7 @@ Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, 
 - Body (JSON object):
 	- `path` (string, required): absolute path to a disk root to register.
 - Returns:
-	- `201` -> `{ "disk_identifier": "<generated-id>" }`
+	- `201` -> `{ "disk_identifier": "<generated-id>", "env_var_entry": "DISK_IDENTIFIERS=[...]" }`
 	- `400` -> `{ "error": "A non-empty path is required." }`
 	- `400` -> `{ "error": "Invalid path provided." }`
 	- `400` -> `{ "error": "The provided path must be a disk root." }`

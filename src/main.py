@@ -143,8 +143,11 @@ def _initialize_service_config() -> None:
     universal_identifier = config.get("universalDiskIdentifierID")
     if not _is_valid_universal_disk_identifier(universal_identifier):
         universal_identifier = _generate_universal_disk_identifier()
-        config["universalDiskIdentifierID"] = universal_identifier
-        _save_configuration(config)
+        logger.info(
+            "Generated new universal disk identifier. "
+            "Set UNIVERSAL_DISK_IDENTIFIER_ID=%s in .env for persistence.",
+            universal_identifier,
+        )
     else:
         universal_identifier = universal_identifier.strip()
 
@@ -247,23 +250,29 @@ def _generate_disk_identifier(disk_root: Path) -> str:
 
 def _persist_disk_identifier(disk_root: Path, disk_identifier: str) -> None:
     """Persist a disk identifier in the identifiers json store."""
+    global _identifiers_cache
     identifiers_data = _load_identifiers()
     identifiers = identifiers_data["identifiers"]
     identifiers.append(disk_identifier)
 
+    if os.getenv("DISK_IDENTIFIERS") is not None:
+        _identifiers_cache = {"identifiers": identifiers}
+        env_var_entry = json.dumps(identifiers)
+        logger.info(
+            "Admin: set DISK_IDENTIFIERS=%s in .env to persist via environment variable",
+            env_var_entry,
+        )
+        return
+
+    _identifiers_cache = None
     IDENTIFIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(IDENTIFIERS_PATH, "w", encoding="utf-8") as file_handle:
         json.dump({"identifiers": identifiers}, file_handle, indent=2)
 
-    env_var_entry = json.dumps(identifiers)
-    logger.info(
-        "Admin: set DISK_IDENTIFIERS=%s in .env to persist via environment variable",
-        env_var_entry,
-    )
-
 
 def _remove_disk_identifier(disk_identifier: str) -> None:
     """Remove a disk identifier from the identifiers json store."""
+    global _identifiers_cache
     identifiers_data = _load_identifiers()
     filtered_identifiers: list[object] = []
 
@@ -280,6 +289,16 @@ def _remove_disk_identifier(disk_identifier: str) -> None:
 
         filtered_identifiers.append(item)
 
+    if os.getenv("DISK_IDENTIFIERS") is not None:
+        _identifiers_cache = {"identifiers": filtered_identifiers}
+        env_var_entry = json.dumps(filtered_identifiers)
+        logger.info(
+            "Removed identifier. Admin: set DISK_IDENTIFIERS=%s in .env to persist via environment variable",
+            env_var_entry,
+        )
+        return
+
+    _identifiers_cache = None
     IDENTIFIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(IDENTIFIERS_PATH, "w", encoding="utf-8") as file_handle:
         json.dump({"identifiers": filtered_identifiers}, file_handle, indent=2)
