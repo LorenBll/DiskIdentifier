@@ -250,6 +250,12 @@ def _persist_disk_identifier(disk_root: Path, disk_identifier: str) -> None:
     with open(IDENTIFIERS_PATH, "w", encoding="utf-8") as file_handle:
         json.dump({"identifiers": identifiers}, file_handle, indent=2)
 
+    env_var_entry = json.dumps(identifiers)
+    logger.info(
+        "Admin: set DISK_IDENTIFIERS=%s in .env to persist via environment variable",
+        env_var_entry,
+    )
+
 
 def _remove_disk_identifier(disk_identifier: str) -> None:
     """Remove a disk identifier from the identifiers json store."""
@@ -379,8 +385,21 @@ def _normalize_disk_root_value(path_value: str) -> Path:
 
 
 def _load_identifiers() -> dict:
-    """Load the identifier store from disk (cached by mtime)."""
+    """Load the identifier store from DISK_IDENTIFIERS env var or from disk (cached)."""
     global _identifiers_cache, _identifiers_cache_mtime
+
+    env_identifiers = os.getenv("DISK_IDENTIFIERS")
+    if env_identifiers is not None:
+        if _identifiers_cache is not None and _identifiers_cache_mtime < 0:
+            return _identifiers_cache
+        try:
+            parsed = json.loads(env_identifiers)
+            if isinstance(parsed, list):
+                _identifiers_cache = {"identifiers": parsed}
+                _identifiers_cache_mtime = -1
+                return _identifiers_cache
+        except json.JSONDecodeError:
+            pass
 
     if IDENTIFIERS_PATH.exists():
         current_mtime = IDENTIFIERS_PATH.stat().st_mtime_ns
@@ -601,7 +620,10 @@ def register() -> tuple:
 
     _cache_disk_association(disk_root, disk_identifier)
 
-    return _success_response({"disk_identifier": disk_identifier}, 201)
+    identifiers = _load_identifiers()["identifiers"]
+    env_var_entry = json.dumps(identifiers)
+
+    return _success_response({"disk_identifier": disk_identifier, "env_var_entry": f"DISK_IDENTIFIERS={env_var_entry}"}, 201)
 
 
 @app.route("/api/locate/disk", methods=["GET", "HEAD", "OPTIONS"])
