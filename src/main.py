@@ -19,7 +19,7 @@ import urllib.request
 
 from flask import Flask, jsonify, request
 
-from models import GetRequest, GetResponse, PostRequest, PostResponse
+from models import PostRequest, PostResponse
 
 logger = logging.getLogger(__name__)
 
@@ -647,38 +647,6 @@ def _send_post_request(request: PostRequest) -> PostResponse:
         body = exc.read().decode("utf-8")
         json_body = json.loads(body) if body else None
         return PostResponse(
-            status_code=exc.code,
-            reason=exc.reason,
-            body=body,
-            body_size=len(body),
-            headers=dict(exc.headers),
-            json_body=json_body,
-        )
-
-
-def _send_get_request(request: GetRequest) -> GetResponse:
-    """Send a GET request and return a normalized response."""
-    req = urllib.request.Request(
-        request.url,
-        headers=request.headers,
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=request.timeout) as resp:
-            body = resp.read().decode("utf-8")
-            json_body = json.loads(body) if body else None
-            return GetResponse(
-                status_code=resp.status,
-                reason=resp.reason,
-                body=body,
-                body_size=len(body),
-                headers=dict(resp.headers),
-                json_body=json_body,
-            )
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8")
-        json_body = json.loads(body) if body else None
-        return GetResponse(
             status_code=exc.code,
             reason=exc.reason,
             body=body,
