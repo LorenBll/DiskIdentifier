@@ -135,11 +135,19 @@ def _initialize_service_config() -> None:
 
     SERVICE_PORT = configured_port
 
+    env_uid = os.getenv("UNIVERSAL_DISK_IDENTIFIER_ID")
+    if env_uid and _is_valid_universal_disk_identifier(env_uid):
+        UNIVERSAL_DISK_IDENTIFIER_ID = env_uid.strip()
+        return
+
     universal_identifier = config.get("universalDiskIdentifierID")
     if not _is_valid_universal_disk_identifier(universal_identifier):
         universal_identifier = _generate_universal_disk_identifier()
-        config["universalDiskIdentifierID"] = universal_identifier
-        _save_configuration(config)
+        logger.info(
+            "Generated new universal disk identifier. "
+            "Set UNIVERSAL_DISK_IDENTIFIER_ID=%s in .env for persistence.",
+            universal_identifier,
+        )
     else:
         universal_identifier = universal_identifier.strip()
 
@@ -242,10 +250,21 @@ def _generate_disk_identifier(disk_root: Path) -> str:
 
 def _persist_disk_identifier(disk_root: Path, disk_identifier: str) -> None:
     """Persist a disk identifier in the identifiers json store."""
+    global _identifiers_cache
     identifiers_data = _load_identifiers()
     identifiers = identifiers_data["identifiers"]
     identifiers.append(disk_identifier)
 
+    if os.getenv("DISK_IDENTIFIERS") is not None:
+        _identifiers_cache = {"identifiers": identifiers}
+        env_var_entry = json.dumps(identifiers)
+        logger.info(
+            "Admin: set DISK_IDENTIFIERS=%s in .env to persist via environment variable",
+            env_var_entry,
+        )
+        return
+
+    _identifiers_cache = None
     IDENTIFIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(IDENTIFIERS_PATH, "w", encoding="utf-8") as file_handle:
         json.dump({"identifiers": identifiers}, file_handle, indent=2)
@@ -253,6 +272,7 @@ def _persist_disk_identifier(disk_root: Path, disk_identifier: str) -> None:
 
 def _remove_disk_identifier(disk_identifier: str) -> None:
     """Remove a disk identifier from the identifiers json store."""
+    global _identifiers_cache
     identifiers_data = _load_identifiers()
     filtered_identifiers: list[object] = []
 
@@ -269,6 +289,16 @@ def _remove_disk_identifier(disk_identifier: str) -> None:
 
         filtered_identifiers.append(item)
 
+    if os.getenv("DISK_IDENTIFIERS") is not None:
+        _identifiers_cache = {"identifiers": filtered_identifiers}
+        env_var_entry = json.dumps(filtered_identifiers)
+        logger.info(
+            "Removed identifier. Admin: set DISK_IDENTIFIERS=%s in .env to persist via environment variable",
+            env_var_entry,
+        )
+        return
+
+    _identifiers_cache = None
     IDENTIFIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(IDENTIFIERS_PATH, "w", encoding="utf-8") as file_handle:
         json.dump({"identifiers": filtered_identifiers}, file_handle, indent=2)
@@ -379,8 +409,21 @@ def _normalize_disk_root_value(path_value: str) -> Path:
 
 
 def _load_identifiers() -> dict:
-    """Load the identifier store from disk (cached by mtime)."""
+    """Load the identifier store from DISK_IDENTIFIERS env var or from disk (cached)."""
     global _identifiers_cache, _identifiers_cache_mtime
+
+    env_identifiers = os.getenv("DISK_IDENTIFIERS")
+    if env_identifiers is not None:
+        if _identifiers_cache is not None and _identifiers_cache_mtime < 0:
+            return _identifiers_cache
+        try:
+            parsed = json.loads(env_identifiers)
+            if isinstance(parsed, list):
+                _identifiers_cache = {"identifiers": parsed}
+                _identifiers_cache_mtime = -1
+                return _identifiers_cache
+        except json.JSONDecodeError:
+            pass
 
     if IDENTIFIERS_PATH.exists():
         current_mtime = IDENTIFIERS_PATH.stat().st_mtime_ns
@@ -601,7 +644,10 @@ def register() -> tuple:
 
     _cache_disk_association(disk_root, disk_identifier)
 
-    return _success_response({"disk_identifier": disk_identifier}, 201)
+    identifiers = _load_identifiers()["identifiers"]
+    env_var_entry = json.dumps(identifiers)
+
+    return _success_response({"disk_identifier": disk_identifier, "env_var_entry": f"DISK_IDENTIFIERS={env_var_entry}"}, 201)
 
 
 @app.route("/api/locate/disk", methods=["GET", "HEAD", "OPTIONS"])
