@@ -13,11 +13,11 @@ Only the latest released version receives security updates.
 If you believe you have found a security issue in DiskIdentifier, please report it privately to the maintainers rather than opening a public issue.
 
 DiskIdentifier is a local disk registration service that involves:
+- **HTTP API endpoints** under `/api/*` for registering, locating, and forgetting disk identifiers
 - **Disk root access** — enumerating and reading disk volumes to register and resolve persistent identifiers
 - **Hidden file writes** — writing `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` files on registered disk volumes
 - **Identifier persistence** — storing registered disk identifiers and the universal identifier in the `.env` file
 - **In-memory cache** — maintaining disk-to-identifier associations refreshed every 30 seconds
-- **Localhost API** — serving endpoints for registration, lookup, and deletion of disk identifiers
 
 Include as much detail as possible, such as:
 - A clear description of the issue and the affected endpoint or component

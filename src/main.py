@@ -223,6 +223,7 @@ def _initialize_service_config() -> None:
 
     UNIVERSAL_DISK_IDENTIFIER_ID = universal_identifier
     _set_env_var("UNIVERSAL_DISK_IDENTIFIER_ID", universal_identifier)
+    logger.info(f"Service configured on port {SERVICE_PORT} with universal identifier {UNIVERSAL_DISK_IDENTIFIER_ID[:16]}...")
 
 
 def _list_available_disks() -> list[Path]:
@@ -399,6 +400,7 @@ def _refresh_disk_associations() -> None:
         DISK_ASSOCIATION_CACHE.update(new_associations)
         DISK_ASSOCIATION_REVERSE_CACHE.clear()
         DISK_ASSOCIATION_REVERSE_CACHE.update(new_reverse_associations)
+    logger.info(f"Refreshed {len(new_associations)} disk associations")
 
 
 def _disk_association_refresh_worker() -> None:
@@ -714,6 +716,7 @@ def register() -> tuple:
         return _error_response("Failed to persist disk identifier.", 500)
 
     _cache_disk_association(disk_root, disk_identifier)
+    logger.info(f"Registered disk at {disk_root} with identifier {disk_identifier[:16]}...")
 
     identifiers = _load_identifiers()["identifiers"]
     env_var_entry = json.dumps(identifiers)
@@ -739,8 +742,10 @@ def locate() -> tuple:
         disk_root = DISK_ASSOCIATION_REVERSE_CACHE.get(identifier_value.strip())
 
     if disk_root is None:
+        logger.warning(f"Disk identifier lookup failed for {identifier_value[:16]}...")
         return _error_response("Disk identifier not found.", 404)
 
+    logger.info(f"Located disk identifier {identifier_value[:16]}... at {disk_root}")
     return _success_response({"path": disk_root})
 
 
@@ -774,11 +779,13 @@ def identify() -> tuple:
         disk_identifier = DISK_ASSOCIATION_CACHE.get(disk_root_path)
 
     if disk_identifier is None:
+        logger.warning(f"Disk identification failed for {disk_root_path}: no identifier loaded")
         return _success_response(
             {"warning": "No disk identifier is loaded for the provided disk."},
             404,
         )
 
+    logger.info(f"Identified disk at {disk_root_path} as {disk_identifier[:16]}...")
     return _success_response({"disk_identifier": disk_identifier, "path": disk_root_path})
 
 
@@ -832,6 +839,7 @@ def forget() -> tuple:
 
     _remove_disk_identifier(disk_identifier)
     _remove_disk_association(disk_root, disk_identifier)
+    logger.info(f"Forgotten disk identifier {disk_identifier[:16]}... at {disk_root_path}")
 
     return _success_response(
         {
@@ -850,6 +858,7 @@ def health() -> tuple:
     if request.method == "HEAD":
         return _head_response()
 
+    logger.info(f"Health check from {request.remote_addr}")
     return _success_response(
         {
             "status": "ok",
@@ -1018,7 +1027,7 @@ if __name__ == "__main__":
     try:
         logging.basicConfig(
             level=logging.INFO,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         )
 
         _initialize_service_config()
@@ -1039,7 +1048,7 @@ if __name__ == "__main__":
 
     try:
         logger.info("=" * 50)
-        logger.info("  Local API Server")
+        logger.info("  DiskIdentifier")
         logger.info("=" * 50)
         logger.info(f"Binding to: http://{SERVICE_HOST}:{SERVICE_PORT}")
         logger.info(f"Mode: private (local only)")
