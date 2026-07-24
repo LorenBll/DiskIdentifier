@@ -1052,6 +1052,9 @@ if __name__ == "__main__":
         logger.info("=" * 50)
         logger.info(f"Binding to: http://{SERVICE_HOST}:{SERVICE_PORT}")
         logger.info(f"Mode: private (local only)")
+        logger.info(f"Universal identifier: {UNIVERSAL_DISK_IDENTIFIER_ID[:16] if UNIVERSAL_DISK_IDENTIFIER_ID else 'Not configured'}...")
+        logger.info(f"Disk associations loaded: {len(DISK_ASSOCIATION_CACHE)}")
+        logger.info(f"Refresh interval: {DISK_ASSOCIATION_REFRESH_INTERVAL_SECONDS}s")
         logger.info("Server starting...")
 
         app.run(host=SERVICE_HOST, port=SERVICE_PORT, debug=False, threaded=True)
