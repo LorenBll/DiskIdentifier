@@ -566,6 +566,7 @@ app = Flask(__name__)
 def restrict_to_local_device() -> tuple | None:
     """Reject requests that do not originate from the local device."""
     if request.path.startswith("/api/") and not _is_local_request():
+        logger.warning(f"Blocked non-local request from {request.remote_addr} for {request.path}")
         return _error_response("Local device access only.", 403)
 
     return None
@@ -803,6 +804,7 @@ def who_are_you() -> tuple:
     ):
         return _error_response("Universal disk identifier is not configured.", 500)
 
+    logger.info(f"WhoAreU request from {request.remote_addr}")
     return _success_response({"universaldiskidentifierid": UNIVERSAL_DISK_IDENTIFIER_ID})
 
 
