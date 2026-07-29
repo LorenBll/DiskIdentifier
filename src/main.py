@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 import ctypes
+import functools
 import hashlib
 import ipaddress
 import json
@@ -10,6 +12,7 @@ import logging
 import os
 import socket
 import string
+import sys
 import threading
 import time
 from pathlib import Path
@@ -155,20 +158,13 @@ def _load_configuration() -> dict:
     return config
 
 
-def _save_configuration(config: dict) -> None:
-    """Persist configuration back to resources/configuration.json."""
-    global _config_cache
-    _config_cache = None
-    with open(CONFIG_PATH, "w", encoding="utf-8") as file_handle:
-        json.dump(config, file_handle, indent=2)
-
-
 def _generate_universal_disk_identifier() -> str:
     """Generate a hash-style identifier for this installation."""
     return hashlib.sha256(os.urandom(32)).hexdigest()
 
 
 _HEXDIGITS_SET = frozenset(string.hexdigits)
+
 
 def _is_valid_universal_disk_identifier(value: object) -> bool:
     """Check whether a configured universal identifier looks like a SHA-256 hex hash."""
@@ -587,6 +583,20 @@ def _head_response() -> tuple:
     return response, 200
 
 
+def standard_endpoint(*methods: str):
+    """Decorator that standardizes OPTIONS/HEAD handling for API endpoints."""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if request.method == "OPTIONS":
+                return _options_response(list(methods))
+            if request.method == "HEAD":
+                return _head_response()
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 @app.after_request
 def set_connection_header(response):
     content_type = response.headers.get("Content-Type", "")
@@ -665,13 +675,9 @@ def _send_post_request(request: PostRequest) -> PostResponse:
 
 
 @app.route("/api/register/disk", methods=["POST", "HEAD", "OPTIONS"])
+@standard_endpoint("POST", "HEAD", "OPTIONS")
 def register() -> tuple:
     """Register a disk root, create its identifier file, and cache the association."""
-    if request.method == "OPTIONS":
-        return _options_response(["POST", "HEAD", "OPTIONS"])
-    if request.method == "HEAD":
-        return _head_response()
-
     payload = request.get_json(silent=True) or {}
     path_value = payload.get("path") if isinstance(payload, dict) else None
 
@@ -726,13 +732,9 @@ def register() -> tuple:
 
 
 @app.route("/api/locate/disk", methods=["GET", "HEAD", "OPTIONS"])
+@standard_endpoint("GET", "HEAD", "OPTIONS")
 def locate() -> tuple:
     """Return the cached disk root for a disk identifier."""
-    if request.method == "OPTIONS":
-        return _options_response(["GET", "HEAD", "OPTIONS"])
-    if request.method == "HEAD":
-        return _head_response()
-
     payload = request.get_json(silent=True) or {}
     identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
 
@@ -751,16 +753,12 @@ def locate() -> tuple:
 
 
 @app.route("/api/whoisit/disk", methods=["GET", "HEAD", "OPTIONS"])
+@standard_endpoint("GET", "HEAD", "OPTIONS")
 def identify() -> tuple:
     """Return the disk identifier for a provided disk root path.
 
     If the disk does not have a loaded identifier, respond with a warning.
     """
-    if request.method == "OPTIONS":
-        return _options_response(["GET", "HEAD", "OPTIONS"])
-    if request.method == "HEAD":
-        return _head_response()
-
     payload = request.get_json(silent=True) or {}
     path_value = payload.get("path") if isinstance(payload, dict) else None
 
@@ -791,13 +789,9 @@ def identify() -> tuple:
 
 
 @app.route("/api/whoareu", methods=["GET", "HEAD", "OPTIONS"])
+@standard_endpoint("GET", "HEAD", "OPTIONS")
 def who_are_you() -> tuple:
     """Return the universal disk identifier for this installation."""
-    if request.method == "OPTIONS":
-        return _options_response(["GET", "HEAD", "OPTIONS"])
-    if request.method == "HEAD":
-        return _head_response()
-
     if (
         not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str)
         or not UNIVERSAL_DISK_IDENTIFIER_ID.strip()
@@ -809,13 +803,9 @@ def who_are_you() -> tuple:
 
 
 @app.route("/api/forget/disk", methods=["DELETE", "HEAD", "OPTIONS"])
+@standard_endpoint("DELETE", "HEAD", "OPTIONS")
 def forget() -> tuple:
     """Delete a disk identifier, remove cache entries, and remove its json record."""
-    if request.method == "OPTIONS":
-        return _options_response(["DELETE", "HEAD", "OPTIONS"])
-    if request.method == "HEAD":
-        return _head_response()
-
     payload = request.get_json(silent=True) or {}
     identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
 
@@ -853,13 +843,9 @@ def forget() -> tuple:
 
 
 @app.route("/api/health", methods=["GET", "HEAD", "OPTIONS"])
+@standard_endpoint("GET", "HEAD", "OPTIONS")
 def health() -> tuple:
     """Health check endpoint."""
-    if request.method == "OPTIONS":
-        return _options_response(["GET", "HEAD", "OPTIONS"])
-    if request.method == "HEAD":
-        return _head_response()
-
     logger.info(f"Health check from {request.remote_addr}")
     return _success_response(
         {
@@ -976,32 +962,34 @@ def _register_endpoints_with_servicehandler() -> None:
 
 
 def _servicehandler_keepalive_forever() -> None:
+    """Register with ServiceHandler and maintain keepalive."""
     global SERVICEHANDLER_HASH
     config = _load_configuration()
     ph_port = config.get("servicehandlerPort", 49155)
     service_name = "DiskIdentifier"
 
     while True:
-        time.sleep(15)
-        try:
-            post_req = PostRequest(
-                url=f"http://127.0.0.1:{ph_port}/api/question/service",
-                body=json.dumps({"name": service_name}).encode("utf-8"),
-                timeout=10,
-                headers={"Content-Type": "application/json"},
-            )
-            resp = _send_post_request(post_req)
-            if resp.status_code == 200:
-                if not SERVICEHANDLER_HASH and isinstance(resp.json_body, dict):
-                    SERVICEHANDLER_HASH = resp.json_body.get("hash")
-                continue
-            if resp.status_code != 404:
-                logger.warning(f"ServiceHandler question failed (HTTP {resp.status_code})")
-                continue
-        except Exception as exc:
-            logger.warning(f"ServiceHandler question failed: {exc}")
-            continue
+        if SERVICEHANDLER_HASH:
+            # Already registered - maintain keepalive every 15 seconds
+            try:
+                post_req = PostRequest(
+                    url=f"http://127.0.0.1:{ph_port}/api/question/service",
+                    body=json.dumps({"name": service_name}).encode("utf-8"),
+                    timeout=10,
+                    headers={"Content-Type": "application/json"},
+                )
+                resp = _send_post_request(post_req)
+                if resp.status_code == 200:
+                    if isinstance(resp.json_body, dict):
+                        SERVICEHANDLER_HASH = resp.json_body.get("hash")
+                    time.sleep(15)
+                    continue
+                logger.warning(f"ServiceHandler question failed (HTTP {resp.status_code}), re-registering...")
+            except Exception as exc:
+                logger.warning(f"ServiceHandler question failed: {exc}")
+            SERVICEHANDLER_HASH = None
 
+        # Not registered - try to register every 5 seconds
         try:
             post_req = PostRequest(
                 url=f"http://127.0.0.1:{ph_port}/api/register/service",
@@ -1021,14 +1009,23 @@ def _servicehandler_keepalive_forever() -> None:
                 logger.info(f"Registered with ServiceHandler, hash={SERVICEHANDLER_HASH[:16]}...")
                 if SERVICEHANDLER_HASH:
                     _register_endpoints_with_servicehandler()
+                continue
+            logger.debug(f"ServiceHandler registration returned HTTP {resp.status_code}")
         except Exception as exc:
             logger.warning(f"ServiceHandler registration attempt failed: {exc}")
 
+        time.sleep(5)
+
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="DiskIdentifier local web service")
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    args = parser.parse_args()
+
+    log_level = logging.DEBUG if args.verbose else logging.INFO
     try:
         logging.basicConfig(
-            level=logging.INFO,
+            level=log_level,
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         )
 

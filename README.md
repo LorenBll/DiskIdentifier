@@ -3,6 +3,7 @@
 DiskIdentifier is a local disk registration service that assigns persistent SHA-256 identifiers to mounted disk roots and resolves them on demand.
 
 ## About
+
 DiskIdentifier binds to `127.0.0.1` on port `49157` and rejects API calls that do not come from the local device. Each installation generates a unique universal identifier persisted in the `UNIVERSAL_DISK_IDENTIFIER_ID` variable in `.env`. Disk associations are refreshed from disk every 30 seconds in a background thread, keeping the in-memory cache in sync with the `.id` files on mounted volumes.
 
 **Features:**
@@ -17,6 +18,7 @@ DiskIdentifier binds to `127.0.0.1` on port `49157` and rejects API calls that d
 > **Safety notice**: DiskIdentifier is intended only for environments where safety is not a major risk — the chances of malevolent actors are low, and the consequences of an eventual mishap are low.
 
 ## Setup
+
 1. Install Python dependencies: `pip install -r requirements.txt`.
 2. Review `resources/configuration.json` if you want to change the port or enable ServiceHandler integration.
 3. Leave the project structure intact so the service can find `resources/` and `src/`.
@@ -29,9 +31,10 @@ DiskIdentifier binds to `127.0.0.1` on port `49157` and rejects API calls that d
 | `UNIVERSAL_DISK_IDENTIFIER_ID` | 64-char hex installation identifier. Automatically saved to `.env`. |
 
 ## Run
-1. Windows: run `scripts\run.bat`.
-2. Unix-like systems: run `bash scripts/run.sh`.
-3. Manual: run `python src/main.py` from the project root.
+
+1. Windows: run `scripts\run.bat` (add `--verbose` for debug output).
+2. Unix-like: run `bash scripts/run.sh` (add `--verbose` for debug output).
+3. Manual: run `python src/main.py` from the project root (add `--verbose` for debug output).
 
 ## Access Control
 
@@ -105,13 +108,33 @@ Service health check.
 - Returns:
 	- `200` -> `{ "status": "ok", "service": "DiskIdentifier", "bind_address": "127.0.0.1", "port": 49157, "hostname": "<hostname>", "pid": 12345 }`
 
+## Notes
+
+### Ultimate Absolute Paths
+
+Projects that consume DiskIdentifier (CipherCLI, TAgent, GalleryCleaner, etc.) use the **ultimate absolute path** convention to express paths that span unknown disk roots:
+
+```
+<64-char-disk-identifier-hex-hash>::<relative-path-within-disk>
+```
+
+The `::` separator distinguishes the disk identifier from the relative path. The consumer resolves the hash to a physical root via `GET /api/locate/disk`, then joins the relative portion.
+
+Example:
+```
+bf5de32849cf52543eddf648d3cda6a3be93114eee9e1004d9174b6e606f9f80::Notes/Obsidian
+```
+
 ---
 
 ## Support
+
 - Open an issue on [GitHub](https://github.com/LorenBll/DiskIdentifier/issues) for bug reports, feature requests, or help.
 
 ## License
+
 - [LICENSE](LICENSE)
 
 ## Author
+
 - [LorenBll](https://github.com/LorenBll)
