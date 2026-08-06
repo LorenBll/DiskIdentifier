@@ -112,7 +112,7 @@ Service health check.
 
 ### Ultimate Absolute Paths
 
-Projects that consume DiskIdentifier (CipherCLI, TAgent, GalleryCleaner, etc.) use the **ultimate absolute path** convention to express paths that span unknown disk roots:
+Projects that consume DiskIdentifier (CipherCLI, MPAgent, GalleryCleaner, etc.) use the **ultimate absolute path** convention to express paths that span unknown disk roots:
 
 ```
 <64-char-disk-identifier-hex-hash>::<relative-path-within-disk>
