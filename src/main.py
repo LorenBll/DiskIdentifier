@@ -674,7 +674,7 @@ def _send_post_request(request: PostRequest) -> PostResponse:
 # ============================================================================
 
 
-@app.route("/api/register/disk", methods=["POST", "HEAD", "OPTIONS"])
+@app.route("/api/disk/register", methods=["POST", "HEAD", "OPTIONS"])
 @standard_endpoint("POST", "HEAD", "OPTIONS")
 def register() -> tuple:
     """Register a disk root, create its identifier file, and cache the association."""
@@ -731,7 +731,7 @@ def register() -> tuple:
     return _success_response({"disk_identifier": disk_identifier, "env_var_entry": f"DISK_IDENTIFIERS={env_var_entry}"}, 201)
 
 
-@app.route("/api/locate/disk", methods=["GET", "HEAD", "OPTIONS"])
+@app.route("/api/disk/locate", methods=["GET", "HEAD", "OPTIONS"])
 @standard_endpoint("GET", "HEAD", "OPTIONS")
 def locate() -> tuple:
     """Return the cached disk root for a disk identifier."""
@@ -752,7 +752,7 @@ def locate() -> tuple:
     return _success_response({"path": disk_root})
 
 
-@app.route("/api/whoisit/disk", methods=["GET", "HEAD", "OPTIONS"])
+@app.route("/api/disk/whoisit", methods=["GET", "HEAD", "OPTIONS"])
 @standard_endpoint("GET", "HEAD", "OPTIONS")
 def identify() -> tuple:
     """Return the disk identifier for a provided disk root path.
@@ -802,7 +802,7 @@ def who_are_you() -> tuple:
     return _success_response({"universaldiskidentifierid": UNIVERSAL_DISK_IDENTIFIER_ID})
 
 
-@app.route("/api/forget/disk", methods=["DELETE", "HEAD", "OPTIONS"])
+@app.route("/api/disk/forget", methods=["DELETE", "HEAD", "OPTIONS"])
 @standard_endpoint("DELETE", "HEAD", "OPTIONS")
 def forget() -> tuple:
     """Delete a disk identifier, remove cache entries, and remove its json record."""
@@ -876,7 +876,7 @@ def _register_endpoints_with_servicehandler() -> None:
     endpoints = [
         {
             "verb": "POST",
-            "path": "/api/register/disk",
+            "path": "/api/disk/register",
             "path_variables": [],
             "body_schema": {
                 "type": "object",
@@ -889,7 +889,7 @@ def _register_endpoints_with_servicehandler() -> None:
         },
         {
             "verb": "GET",
-            "path": "/api/locate/disk",
+            "path": "/api/disk/locate",
             "path_variables": [],
             "body_schema": {
                 "type": "object",
@@ -902,7 +902,7 @@ def _register_endpoints_with_servicehandler() -> None:
         },
         {
             "verb": "GET",
-            "path": "/api/whoisit/disk",
+            "path": "/api/disk/whoisit",
             "path_variables": [],
             "body_schema": {
                 "type": "object",
@@ -922,7 +922,7 @@ def _register_endpoints_with_servicehandler() -> None:
         },
         {
             "verb": "DELETE",
-            "path": "/api/forget/disk",
+            "path": "/api/disk/forget",
             "path_variables": [],
             "body_schema": {
                 "type": "object",

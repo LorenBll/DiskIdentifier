@@ -45,7 +45,7 @@ All `/api/*` endpoints are local-device only. Requests from non-local addresses 
 
 ## API Endpoints
 
-### `POST /api/register/disk` (also `HEAD`, `OPTIONS`)
+### `POST /api/disk/register` (also `HEAD`, `OPTIONS`)
 Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, and stores the association.
 - Auth: local-device only (no API key required).
 - Body (JSON object):
@@ -60,7 +60,7 @@ Registers a disk root, writes `<UNIVERSAL_DISK_IDENTIFIER_ID>.id` at that root, 
 	- `500` -> `{ "error": "Failed to create identifier file." }`
 	- `500` -> `{ "error": "Failed to persist disk identifier." }`
 
-### `GET /api/locate/disk` (also `HEAD`, `OPTIONS`)
+### `GET /api/disk/locate` (also `HEAD`, `OPTIONS`)
 Resolves a disk identifier to its cached disk-root path.
 - Auth: local-device only (no API key required).
 - Body (JSON object):
@@ -70,7 +70,7 @@ Resolves a disk identifier to its cached disk-root path.
 	- `400` -> `{ "error": "A disk identifier is required." }`
 	- `404` -> `{ "error": "Disk identifier not found." }`
 
-### `GET /api/whoisit/disk` (also `HEAD`, `OPTIONS`)
+### `GET /api/disk/whoisit` (also `HEAD`, `OPTIONS`)
 Resolves a disk root to its loaded disk identifier.
 - Auth: local-device only (no API key required).
 - Body (JSON object):
@@ -90,7 +90,7 @@ Returns the installation-wide universal disk identifier key name.
 	- `200` -> `{ "universaldiskidentifierid": "<universal-id-name>" }`
 	- `500` -> `{ "error": "Universal disk identifier is not configured." }`
 
-### `DELETE /api/forget/disk` (also `HEAD`, `OPTIONS`)
+### `DELETE /api/disk/forget` (also `HEAD`, `OPTIONS`)
 Deletes a registered disk identifier, removes its identifier file from disk root, and removes cache and persistence entries.
 - Auth: local-device only (no API key required).
 - Body (JSON object):
@@ -118,7 +118,7 @@ Projects that consume DiskIdentifier (CipherCLI, TAgent, GalleryCleaner, etc.) u
 <64-char-disk-identifier-hex-hash>::<relative-path-within-disk>
 ```
 
-The `::` separator distinguishes the disk identifier from the relative path. The consumer resolves the hash to a physical root via `GET /api/locate/disk`, then joins the relative portion.
+The `::` separator distinguishes the disk identifier from the relative path. The consumer resolves the hash to a physical root via `GET /api/disk/locate`, then joins the relative portion.
 
 Example:
 ```
