@@ -20,7 +20,7 @@ DiskIdentifier binds to `127.0.0.1` on port `49157` and rejects API calls that d
 ## Setup
 
 1. Install Python dependencies: `pip install -r requirements.txt`.
-2. Review `resources/configuration.json` if you want to change the port or enable ServiceHandler integration.
+2. Review `resources/configuration.json` if you want to change the port or disable ServiceHandler integration (enabled by default).
 3. Leave the project structure intact so the service can find `resources/` and `src/`.
 
 ### Environment Variables
