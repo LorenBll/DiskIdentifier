@@ -83,11 +83,11 @@ Resolves a disk root to its loaded disk identifier.
 	- `404` -> `{ "warning": "No disk identifier is loaded for the provided disk." }`
 
 ### `GET /api/whoareu` (also `HEAD`, `OPTIONS`)
-Returns the installation-wide universal disk identifier key name.
+Returns the installation-wide universal disk identifier for this installation.
 - Auth: local-device only (no API key required).
 - Body: none.
 - Returns:
-	- `200` -> `{ "universaldiskidentifierid": "<universal-id-name>" }`
+	- `200` -> `{ "universaldiskidentifierid": "<64-char-hex-id>" }`
 	- `500` -> `{ "error": "Universal disk identifier is not configured." }`
 
 ### `DELETE /api/disk/forget` (also `HEAD`, `OPTIONS`)

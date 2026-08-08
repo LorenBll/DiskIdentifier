@@ -12,13 +12,34 @@ import logging
 import os
 import socket
 import string
-import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 import urllib.error
 import urllib.request
+
+# ============================================================================
+# STARTUP DEPENDENCY CHECK
+# ============================================================================
+_missing_libraries: list[str] = []
+for _module, _package in {
+    "flask": "Flask",
+}.items():
+    try:
+        __import__(_module)
+    except ImportError:
+        _missing_libraries.append(_package)
+
+if _missing_libraries:
+    import sys
+    sys.stderr.write(
+        "ERROR: Missing required libraries: "
+        + ", ".join(_missing_libraries)
+        + ". Install them with: pip install -r requirements.txt\n"
+    )
+    sys.exit(1)
 
 from flask import Flask, jsonify, request
 
@@ -211,14 +232,8 @@ def _initialize_service_config() -> None:
         os.environ["UNIVERSAL_DISK_IDENTIFIER_ID"] = file_uid.strip()
         return
 
-    universal_identifier = config.get("universalDiskIdentifierID")
-    if not _is_valid_universal_disk_identifier(universal_identifier):
-        universal_identifier = _generate_universal_disk_identifier()
-    else:
-        universal_identifier = universal_identifier.strip()
-
-    UNIVERSAL_DISK_IDENTIFIER_ID = universal_identifier
-    _set_env_var("UNIVERSAL_DISK_IDENTIFIER_ID", universal_identifier)
+    UNIVERSAL_DISK_IDENTIFIER_ID = _generate_universal_disk_identifier()
+    _set_env_var("UNIVERSAL_DISK_IDENTIFIER_ID", UNIVERSAL_DISK_IDENTIFIER_ID)
     logger.info(f"Service configured on port {SERVICE_PORT} with universal identifier {UNIVERSAL_DISK_IDENTIFIER_ID[:16]}...")
 
 
@@ -316,7 +331,7 @@ def _generate_disk_identifier(disk_root: Path) -> str:
     return hashlib.sha256(signature_source.encode("utf-8")).hexdigest()
 
 
-def _persist_disk_identifier(disk_root: Path, disk_identifier: str) -> None:
+def _persist_disk_identifier(disk_identifier: str) -> None:
     """Persist a disk identifier in the .env file."""
     global _identifiers_cache
     identifiers_data = _load_identifiers()
@@ -706,7 +721,7 @@ def register() -> tuple:
 
     try:
         identifier_file.write_text(disk_identifier, encoding="utf-8")
-        _persist_disk_identifier(disk_root, disk_identifier)
+        _persist_disk_identifier(disk_identifier)
     except OSError:
         try:
             if identifier_file.exists():
@@ -982,6 +997,7 @@ def _servicehandler_keepalive_forever() -> None:
                 if resp.status_code == 200:
                     if isinstance(resp.json_body, dict):
                         SERVICEHANDLER_HASH = resp.json_body.get("hash")
+                    logger.debug(f"ServiceHandler keepalive OK for {service_name}")
                     time.sleep(15)
                     continue
                 logger.warning(f"ServiceHandler question failed (HTTP {resp.status_code}), re-registering...")
@@ -1024,9 +1040,16 @@ if __name__ == "__main__":
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
     try:
+        log_dir = Path(__file__).resolve().parent.parent / "logs"
+        log_dir.mkdir(exist_ok=True)
+        log_file = log_dir / f"{datetime.now().strftime('%d-%m-%Y_%H.%M.%S')}.log"
         logging.basicConfig(
             level=log_level,
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler(log_file, encoding="utf-8"),
+            ],
         )
 
         _initialize_service_config()
