@@ -208,19 +208,14 @@ def _is_valid_universal_disk_identifier(value: object) -> bool:
 
 
 def _initialize_service_config() -> None:
-    """Load service configuration (private mode only)."""
+    """Load service configuration."""
     global SERVICE_HOST, SERVICE_PORT, UNIVERSAL_DISK_IDENTIFIER_ID
     config = _load_configuration()
 
     # Service binds to loopback only.
     SERVICE_HOST = "127.0.0.1"
 
-    private_config = (
-        config.get("private") if isinstance(config.get("private"), dict) else {}
-    )
-    configured_port = private_config.get("port")
-    if configured_port is None:
-        configured_port = config.get("port", 49157)
+    configured_port = config.get("port", 49157)
 
     if isinstance(configured_port, str) and configured_port.isdigit():
         configured_port = int(configured_port)
@@ -1194,7 +1189,6 @@ if __name__ == "__main__":
             "DiskIdentifier starting",
             {
                 "bind_address": f"http://{SERVICE_HOST}:{SERVICE_PORT}",
-                "mode": "private (local only)",
                 "universal_identifier_prefix": (
                     UNIVERSAL_DISK_IDENTIFIER_ID[:16] if UNIVERSAL_DISK_IDENTIFIER_ID else "Not configured"
                 ),
