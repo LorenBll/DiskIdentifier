@@ -8,17 +8,18 @@ import functools
 import hashlib
 import ipaddress
 import json
-import logging
 import os
 import socket
 import string
 import threading
 import time
-from datetime import datetime
+import traceback
 from pathlib import Path
 
 import urllib.error
 import urllib.request
+
+from logginglib import init_logging, log_debug, log_error, log_info, log_warn
 
 # ============================================================================
 # STARTUP DEPENDENCY CHECK
@@ -44,8 +45,6 @@ if _missing_libraries:
 from flask import Flask, jsonify, request
 
 from models import PostRequest, PostResponse
-
-logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -94,9 +93,9 @@ def _parse_env_file() -> dict[str, str]:
                 if key:
                     env_dict[key] = value
     except OSError:
-        logger.warning(f"Failed to read env file {ENV_PATH}")
+        log_warn("Failed to read env file", {"env_path": str(ENV_PATH)})
         return {}
-    logger.debug(f"Parsed {len(env_dict)} variables from env file {ENV_PATH}")
+    log_debug("Parsed variables from env file", {"count": len(env_dict), "env_path": str(ENV_PATH)})
     return env_dict
 
 
@@ -134,7 +133,10 @@ def _write_env_file(env_dict: dict[str, str]) -> None:
         with open(ENV_PATH, "w", encoding="utf-8") as f:
             f.writelines(output_lines)
     except OSError as exc:
-        logger.error(f"Failed to write env file {ENV_PATH}: {exc}", exc_info=True)
+        log_error(
+            "Failed to write env file",
+            {"env_path": str(ENV_PATH), "exception": str(exc), "traceback": traceback.format_exc()},
+        )
 
 
 def _set_env_var(key: str, value: str) -> None:
@@ -159,7 +161,7 @@ def _load_configuration() -> dict:
     """Load configuration from resources/configuration.json (cached)."""
     global _config_cache
     if _config_cache is not None:
-        logger.debug("Configuration loaded from cache")
+        log_debug("Configuration loaded from cache")
         return _config_cache
 
     config_path = CONFIG_PATH
@@ -182,7 +184,7 @@ def _load_configuration() -> dict:
         ) from exc
 
     _config_cache = config
-    logger.debug(f"Loaded configuration from {config_path}")
+    log_debug("Loaded configuration", {"config_path": str(config_path)})
     return config
 
 
@@ -230,7 +232,14 @@ def _initialize_service_config() -> None:
     env_uid = os.getenv("UNIVERSAL_DISK_IDENTIFIER_ID")
     if env_uid and _is_valid_universal_disk_identifier(env_uid):
         UNIVERSAL_DISK_IDENTIFIER_ID = env_uid.strip()
-        logger.info(f"Service configured on port {SERVICE_PORT} with universal identifier {UNIVERSAL_DISK_IDENTIFIER_ID[:16]}... (from env var)")
+        log_info(
+            "Service configured",
+            {
+                "port": SERVICE_PORT,
+                "universal_identifier_prefix": UNIVERSAL_DISK_IDENTIFIER_ID[:16],
+                "source": "env var",
+            },
+        )
         return
 
     env_dict = _parse_env_file()
@@ -238,12 +247,26 @@ def _initialize_service_config() -> None:
     if file_uid and _is_valid_universal_disk_identifier(file_uid):
         UNIVERSAL_DISK_IDENTIFIER_ID = file_uid.strip()
         os.environ["UNIVERSAL_DISK_IDENTIFIER_ID"] = file_uid.strip()
-        logger.info(f"Service configured on port {SERVICE_PORT} with universal identifier {UNIVERSAL_DISK_IDENTIFIER_ID[:16]}... (from .env file)")
+        log_info(
+            "Service configured",
+            {
+                "port": SERVICE_PORT,
+                "universal_identifier_prefix": UNIVERSAL_DISK_IDENTIFIER_ID[:16],
+                "source": ".env file",
+            },
+        )
         return
 
     UNIVERSAL_DISK_IDENTIFIER_ID = _generate_universal_disk_identifier()
     _set_env_var("UNIVERSAL_DISK_IDENTIFIER_ID", UNIVERSAL_DISK_IDENTIFIER_ID)
-    logger.info(f"Service configured on port {SERVICE_PORT} with universal identifier {UNIVERSAL_DISK_IDENTIFIER_ID[:16]}... (generated)")
+    log_info(
+        "Service configured",
+        {
+            "port": SERVICE_PORT,
+            "universal_identifier_prefix": UNIVERSAL_DISK_IDENTIFIER_ID[:16],
+            "source": "generated",
+        },
+    )
 
 
 def _list_available_disks() -> list[Path]:
@@ -255,7 +278,7 @@ def _list_available_disks() -> list[Path]:
         for letter in string.ascii_uppercase:
             if drive_mask & 1:
                 available_roots.append(Path(f"{letter}:/"))
-                logger.debug(f"Discovered drive root {letter}:/")
+                log_debug("Discovered drive root", {"root": f"{letter}:/"})
             drive_mask >>= 1
 
         return available_roots
@@ -276,19 +299,36 @@ def _read_disk_identifier_file(disk_root: Path) -> str | None:
         file_exists = identifier_file.exists()
     except OSError:
         # Some Windows drives can raise errors when media is unavailable.
-        logger.debug(f"Failed to check identifier file {identifier_file} for {disk_root}")
+        log_debug(
+            "Failed to check identifier file",
+            {"path": str(identifier_file), "disk_root": str(disk_root)},
+        )
         return None
 
     if not file_exists:
-        logger.debug(f"Identifier file {identifier_file} missing for {disk_root}")
+        log_debug(
+            "Identifier file missing",
+            {"path": str(identifier_file), "disk_root": str(disk_root)},
+        )
         return None
 
     try:
         content = identifier_file.read_text(encoding="utf-8").strip()
-        logger.debug(f"Read identifier file {identifier_file} for {disk_root}")
+        log_debug(
+            "Read identifier file",
+            {"path": str(identifier_file), "disk_root": str(disk_root)},
+        )
         return content or None
     except OSError as exc:
-        logger.error(f"Failed to read identifier file {identifier_file}: {exc}", exc_info=True)
+        log_error(
+            "Failed to read identifier file",
+            {
+                "path": str(identifier_file),
+                "disk_root": str(disk_root),
+                "exception": str(exc),
+                "traceback": traceback.format_exc(),
+            },
+        )
         return None
 
 
@@ -340,10 +380,10 @@ def _generate_disk_identifier(disk_root: Path) -> str:
                 os.urandom(16).hex(),
             ]
         )
-        logger.debug(f"Using stat-based signature for {disk_root}")
+        log_debug("Using stat-based signature", {"disk_root": str(disk_root)})
     else:
         signature_source = "|".join([signature_source, os.urandom(16).hex()])
-        logger.debug(f"Using fallback signature for {disk_root} (stat unavailable)")
+        log_debug("Using fallback signature", {"disk_root": str(disk_root)})
 
     return hashlib.sha256(signature_source.encode("utf-8")).hexdigest()
 
@@ -414,7 +454,10 @@ def _refresh_disk_associations() -> None:
 
             disk_identifier = disk_identifier.strip()
             if disk_identifier not in allowed_disk_ids:
-                logger.debug(f"Skipped association for {disk_root}: identifier not in allowed list")
+                log_debug(
+                    "Skipped association: identifier not in allowed list",
+                    {"disk_root": str(disk_root)},
+                )
                 continue
 
             disk_root_path = disk_root.as_posix()
@@ -422,7 +465,7 @@ def _refresh_disk_associations() -> None:
             new_reverse_associations[disk_identifier] = disk_root_path
         except OSError:
             # Skip drive roots that are not currently readable.
-            logger.debug(f"Skipped unreadable drive root {disk_root}")
+            log_debug("Skipped unreadable drive root", {"disk_root": str(disk_root)})
             continue
 
     with DISK_ASSOCIATION_CACHE_LOCK:
@@ -430,7 +473,7 @@ def _refresh_disk_associations() -> None:
         DISK_ASSOCIATION_CACHE.update(new_associations)
         DISK_ASSOCIATION_REVERSE_CACHE.clear()
         DISK_ASSOCIATION_REVERSE_CACHE.update(new_reverse_associations)
-    logger.debug(f"Refreshed {len(new_associations)} disk associations")
+    log_debug("Refreshed disk associations", {"count": len(new_associations)})
 
 
 def _disk_association_refresh_worker() -> None:
@@ -439,7 +482,10 @@ def _disk_association_refresh_worker() -> None:
         try:
             _refresh_disk_associations()
         except Exception as exc:
-            logger.error(f"Disk association refresh failed: {exc}")
+            log_error(
+                "Disk association refresh failed",
+                {"exception": str(exc), "traceback": traceback.format_exc()},
+            )
 
         time.sleep(DISK_ASSOCIATION_REFRESH_INTERVAL_SECONDS)
 
@@ -452,7 +498,13 @@ def _start_disk_association_refresh_loop() -> None:
         daemon=True,
     )
     refresh_thread.start()
-    logger.info(f"Started disk association refresh thread '{refresh_thread.name}' (interval {DISK_ASSOCIATION_REFRESH_INTERVAL_SECONDS}s)")
+    log_info(
+        "Started disk association refresh thread",
+        {
+            "name": refresh_thread.name,
+            "interval_seconds": DISK_ASSOCIATION_REFRESH_INTERVAL_SECONDS,
+        },
+    )
 
 
 def _normalize_disk_root_value(path_value: str) -> Path:
@@ -482,7 +534,7 @@ def _normalize_disk_root_value(path_value: str) -> Path:
 
         for disk_root in available_roots:
             if disk_root.as_posix().upper() == candidate_value.upper():
-                logger.debug(f"Normalized {path_value} to disk root {disk_root}")
+                log_debug("Normalized path to disk root", {"input": path_value, "root": str(disk_root)})
                 return disk_root
 
         raise ValueError("The provided path must be a disk root.")
@@ -490,7 +542,7 @@ def _normalize_disk_root_value(path_value: str) -> Path:
     if candidate_value != "/":
         raise ValueError("The provided path must be a disk root.")
 
-    logger.debug(f"Normalized {path_value} to disk root {available_roots[0]}")
+    log_debug("Normalized path to disk root", {"input": path_value, "root": str(available_roots[0])})
     return available_roots[0]
 
 
@@ -499,7 +551,7 @@ def _load_identifiers() -> dict:
     global _identifiers_cache
 
     if _identifiers_cache is not None:
-        logger.debug(f"Loaded {len(_identifiers_cache['identifiers'])} identifiers from cache")
+        log_debug("Loaded identifiers from cache", {"count": len(_identifiers_cache["identifiers"])})
         return _identifiers_cache
 
     env_identifiers = os.getenv("DISK_IDENTIFIERS")
@@ -508,10 +560,10 @@ def _load_identifiers() -> dict:
             parsed = json.loads(env_identifiers)
             if isinstance(parsed, list):
                 _identifiers_cache = {"identifiers": parsed}
-                logger.debug(f"Loaded {len(parsed)} identifiers from DISK_IDENTIFIERS env var")
+                log_debug("Loaded identifiers from env var", {"count": len(parsed)})
                 return _identifiers_cache
         except json.JSONDecodeError as exc:
-            logger.warning(f"Invalid JSON in DISK_IDENTIFIERS env var: {exc}")
+            log_warn("Invalid JSON in DISK_IDENTIFIERS env var", {"exception": str(exc)})
 
     env_dict = _parse_env_file()
     env_val = env_dict.get("DISK_IDENTIFIERS")
@@ -521,13 +573,13 @@ def _load_identifiers() -> dict:
             if isinstance(parsed, list):
                 _identifiers_cache = {"identifiers": parsed}
                 os.environ["DISK_IDENTIFIERS"] = env_val
-                logger.debug(f"Loaded {len(parsed)} identifiers from .env file")
+                log_debug("Loaded identifiers from .env file", {"count": len(parsed)})
                 return _identifiers_cache
         except json.JSONDecodeError as exc:
-            logger.warning(f"Invalid JSON in DISK_IDENTIFIERS from .env file: {exc}")
+            log_warn("Invalid JSON in DISK_IDENTIFIERS from .env file", {"exception": str(exc)})
 
     _identifiers_cache = {"identifiers": []}
-    logger.debug("No stored identifiers found; using empty identifier list")
+    log_debug("No stored identifiers found; using empty identifier list")
     return _identifiers_cache
 
 
@@ -576,7 +628,7 @@ def _get_local_device_addresses() -> set[str]:
     normalized_addresses.update({"127.0.0.1", "::1"})
     _local_addresses_cache = normalized_addresses
     _local_addresses_cache_time = now
-    logger.debug(f"Collected {len(normalized_addresses)} local device addresses")
+    log_debug("Collected local device addresses", {"count": len(normalized_addresses)})
     return normalized_addresses
 
 
@@ -604,11 +656,17 @@ app = Flask(__name__)
 def restrict_to_local_device() -> tuple | None:
     """Reject requests that do not originate from the local device."""
     if request.path.startswith("/api/") and not _is_local_request():
-        logger.warning(f"Blocked non-local request from {request.remote_addr} for {request.path}")
+        log_warn(
+            "Blocked non-local request",
+            {"remote_addr": request.remote_addr, "path": request.path},
+        )
         return _error_response("Local device access only.", 403)
 
     if request.path.startswith("/api/"):
-        logger.debug(f"Allowed local request from {request.remote_addr} for {request.path}")
+        log_debug(
+            "Allowed local request",
+            {"remote_addr": request.remote_addr, "path": request.path},
+        )
 
     return None
 
@@ -683,7 +741,7 @@ def _success_response(data: dict, status_code: int = 200) -> tuple:
 
 def _send_post_request(request: PostRequest) -> PostResponse:
     """Send a POST request and return a normalized response."""
-    logger.debug(f"POST request to {request.url}")
+    log_debug("POST request", {"url": request.url})
     req = urllib.request.Request(
         request.url,
         data=request.body,
@@ -694,7 +752,7 @@ def _send_post_request(request: PostRequest) -> PostResponse:
         with urllib.request.urlopen(req, timeout=request.timeout) as resp:
             body = resp.read().decode("utf-8")
             json_body = json.loads(body) if body else None
-            logger.debug(f"Received HTTP {resp.status} from {request.url}")
+            log_debug("Received HTTP response", {"status": resp.status, "url": request.url})
             return PostResponse(
                 status_code=resp.status,
                 reason=resp.reason,
@@ -706,7 +764,7 @@ def _send_post_request(request: PostRequest) -> PostResponse:
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8")
         json_body = json.loads(body) if body else None
-        logger.debug(f"Received HTTP {exc.code} from {request.url}")
+        log_debug("Received HTTP error response", {"status": exc.code, "url": request.url})
         return PostResponse(
             status_code=exc.code,
             reason=exc.reason,
@@ -716,7 +774,10 @@ def _send_post_request(request: PostRequest) -> PostResponse:
             json_body=json_body,
         )
     except urllib.error.URLError as exc:
-        logger.error(f"POST request to {request.url} failed: {exc}", exc_info=True)
+        log_error(
+            "POST request failed",
+            {"url": request.url, "exception": str(exc), "traceback": traceback.format_exc()},
+        )
         raise
 
 
@@ -729,34 +790,34 @@ def _send_post_request(request: PostRequest) -> PostResponse:
 @standard_endpoint("POST", "HEAD", "OPTIONS")
 def register() -> tuple:
     """Register a disk root, create its identifier file, and cache the association."""
-    logger.info(f"Register request from {request.remote_addr}")
+    log_info("Register request", {"remote_addr": request.remote_addr})
     payload = request.get_json(silent=True) or {}
     path_value = payload.get("path") if isinstance(payload, dict) else None
 
     if not isinstance(path_value, str) or not path_value.strip():
-        logger.warning("Register request rejected: missing or invalid path")
+        log_warn("Register request rejected", {"reason": "missing or invalid path"})
         return _error_response("A non-empty path is required.")
 
     try:
         disk_root = _normalize_disk_root_value(path_value)
     except (ValueError, OSError, RuntimeError):
-        logger.warning(f"Register request rejected: invalid path normalization for {path_value}")
+        log_warn("Register request rejected", {"reason": "invalid path normalization", "path": path_value})
         return _error_response("Invalid path provided.")
 
     if not _is_disk_root(disk_root):
-        logger.warning(f"Register request rejected: {disk_root} is not a disk root")
+        log_warn("Register request rejected", {"reason": "not a disk root", "path": str(disk_root)})
         return _error_response("The provided path must be a disk root.")
 
     if (
         not isinstance(UNIVERSAL_DISK_IDENTIFIER_ID, str)
         or not UNIVERSAL_DISK_IDENTIFIER_ID.strip()
     ):
-        logger.warning("Register request rejected: universal disk identifier is not configured")
+        log_warn("Register request rejected", {"reason": "universal disk identifier not configured"})
         return _error_response("Universal disk identifier is not configured.", 500)
 
     identifier_file = disk_root / f"{UNIVERSAL_DISK_IDENTIFIER_ID}.id"
     if identifier_file.exists():
-        logger.warning(f"Register request rejected: identifier already exists at {identifier_file}")
+        log_warn("Register request rejected", {"reason": "identifier already exists", "path": str(identifier_file)})
         return _error_response("An identifier already exists.", 409)
 
     disk_identifier = _generate_disk_identifier(disk_root)
@@ -765,7 +826,7 @@ def register() -> tuple:
         identifier_file.write_text(disk_identifier, encoding="utf-8")
         _persist_disk_identifier(disk_identifier)
     except OSError:
-        logger.warning(f"Failed to write identifier file {identifier_file}")
+        log_warn("Failed to write identifier file", {"path": str(identifier_file)})
         try:
             if identifier_file.exists():
                 identifier_file.unlink()
@@ -773,7 +834,7 @@ def register() -> tuple:
             pass
         return _error_response("Failed to create identifier file.", 500)
     except Exception:
-        logger.warning(f"Failed to persist disk identifier for {disk_root}")
+        log_warn("Failed to persist disk identifier", {"disk_root": str(disk_root)})
         try:
             if identifier_file.exists():
                 identifier_file.unlink()
@@ -782,7 +843,7 @@ def register() -> tuple:
         return _error_response("Failed to persist disk identifier.", 500)
 
     _cache_disk_association(disk_root, disk_identifier)
-    logger.info(f"Registered disk at {disk_root} with identifier {disk_identifier[:16]}...")
+    log_info("Registered disk", {"disk_root": str(disk_root), "disk_identifier_prefix": disk_identifier[:16]})
 
     identifiers = _load_identifiers()["identifiers"]
     env_var_entry = json.dumps(identifiers)
@@ -794,22 +855,22 @@ def register() -> tuple:
 @standard_endpoint("GET", "HEAD", "OPTIONS")
 def locate() -> tuple:
     """Return the cached disk root for a disk identifier."""
-    logger.info(f"Locate request from {request.remote_addr}")
+    log_info("Locate request", {"remote_addr": request.remote_addr})
     payload = request.get_json(silent=True) or {}
     identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
 
     if not isinstance(identifier_value, str) or not identifier_value.strip():
-        logger.warning("Locate request rejected: missing disk identifier")
+        log_warn("Locate request rejected", {"reason": "missing disk identifier"})
         return _error_response("A disk identifier is required.")
 
     with DISK_ASSOCIATION_CACHE_LOCK:
         disk_root = DISK_ASSOCIATION_REVERSE_CACHE.get(identifier_value.strip())
 
     if disk_root is None:
-        logger.info(f"Disk identifier lookup miss for {identifier_value[:16]}...")
+        log_info("Disk identifier lookup miss", {"disk_identifier_prefix": identifier_value[:16]})
         return _error_response("Disk identifier not found.", 404)
 
-    logger.info(f"Located disk identifier {identifier_value[:16]}... at {disk_root}")
+    log_info("Located disk identifier", {"disk_identifier_prefix": identifier_value[:16], "path": disk_root})
     return _success_response({"path": disk_root})
 
 
@@ -820,22 +881,22 @@ def identify() -> tuple:
 
     If the disk does not have a loaded identifier, respond with a warning.
     """
-    logger.info(f"Identify request from {request.remote_addr}")
+    log_info("Identify request", {"remote_addr": request.remote_addr})
     payload = request.get_json(silent=True) or {}
     path_value = payload.get("path") if isinstance(payload, dict) else None
 
     if not isinstance(path_value, str) or not path_value.strip():
-        logger.warning("Identify request rejected: missing or invalid path")
+        log_warn("Identify request rejected", {"reason": "missing or invalid path"})
         return _error_response("A non-empty path is required.")
 
     try:
         disk_root = _normalize_disk_root_value(path_value)
     except (ValueError, OSError, RuntimeError):
-        logger.warning(f"Identify request rejected: invalid path normalization for {path_value}")
+        log_warn("Identify request rejected", {"reason": "invalid path normalization", "path": path_value})
         return _error_response("Invalid path provided.")
 
     if not _is_disk_root(disk_root):
-        logger.warning(f"Identify request rejected: {disk_root} is not a disk root")
+        log_warn("Identify request rejected", {"reason": "not a disk root", "path": str(disk_root)})
         return _error_response("The provided path must be a disk root.")
 
     disk_root_path = disk_root.as_posix()
@@ -843,13 +904,13 @@ def identify() -> tuple:
         disk_identifier = DISK_ASSOCIATION_CACHE.get(disk_root_path)
 
     if disk_identifier is None:
-        logger.info(f"Disk identification miss for {disk_root_path}: no identifier loaded")
+        log_info("Disk identification miss", {"path": disk_root_path})
         return _success_response(
             {"warning": "No disk identifier is loaded for the provided disk."},
             404,
         )
 
-    logger.info(f"Identified disk at {disk_root_path} as {disk_identifier[:16]}...")
+    log_info("Identified disk", {"path": disk_root_path, "disk_identifier_prefix": disk_identifier[:16]})
     return _success_response({"disk_identifier": disk_identifier, "path": disk_root_path})
 
 
@@ -863,7 +924,7 @@ def who_are_you() -> tuple:
     ):
         return _error_response("Universal disk identifier is not configured.", 500)
 
-    logger.info(f"WhoAreU request from {request.remote_addr}")
+    log_info("WhoAreU request", {"remote_addr": request.remote_addr})
     return _success_response({"universaldiskidentifierid": UNIVERSAL_DISK_IDENTIFIER_ID})
 
 
@@ -871,12 +932,12 @@ def who_are_you() -> tuple:
 @standard_endpoint("DELETE", "HEAD", "OPTIONS")
 def forget() -> tuple:
     """Delete a disk identifier, remove cache entries, and remove its json record."""
-    logger.info(f"Forget request from {request.remote_addr}")
+    log_info("Forget request", {"remote_addr": request.remote_addr})
     payload = request.get_json(silent=True) or {}
     identifier_value = payload.get("disk_identifier") if isinstance(payload, dict) else None
 
     if not isinstance(identifier_value, str) or not identifier_value.strip():
-        logger.warning("Forget request rejected: missing disk identifier")
+        log_warn("Forget request rejected", {"reason": "missing disk identifier"})
         return _error_response("A disk identifier is required.")
 
     disk_identifier = identifier_value.strip()
@@ -885,7 +946,7 @@ def forget() -> tuple:
         disk_root_path = DISK_ASSOCIATION_REVERSE_CACHE.get(disk_identifier)
 
     if disk_root_path is None:
-        logger.warning(f"Forget request: disk identifier {disk_identifier[:16]}... not found")
+        log_warn("Forget request: disk identifier not found", {"disk_identifier_prefix": disk_identifier[:16]})
         return _error_response("Disk identifier not found.", 404)
 
     disk_root = Path(disk_root_path)
@@ -895,12 +956,12 @@ def forget() -> tuple:
         if identifier_file.exists():
             identifier_file.unlink()
     except OSError:
-        logger.warning(f"Failed to delete identifier file {identifier_file}")
+        log_warn("Failed to delete identifier file", {"path": str(identifier_file)})
         return _error_response("Failed to delete identifier file.", 500)
 
     _remove_disk_identifier(disk_identifier)
     _remove_disk_association(disk_root, disk_identifier)
-    logger.info(f"Forgotten disk identifier {disk_identifier[:16]}... at {disk_root_path}")
+    log_info("Forgotten disk identifier", {"disk_identifier_prefix": disk_identifier[:16], "path": disk_root_path})
 
     return _success_response(
         {
@@ -915,7 +976,7 @@ def forget() -> tuple:
 @standard_endpoint("GET", "HEAD", "OPTIONS")
 def health() -> tuple:
     """Health check endpoint."""
-    logger.info(f"Health check from {request.remote_addr}")
+    log_info("Health check", {"remote_addr": request.remote_addr})
     return _success_response(
         {
             "status": "ok",
@@ -937,7 +998,7 @@ def _register_endpoints_with_servicehandler() -> None:
     """Register this service's API endpoints with ServiceHandler."""
     global SERVICEHANDLER_HASH
     if not SERVICEHANDLER_HASH:
-        logger.debug("Skipped endpoint registration: no ServiceHandler hash available")
+        log_debug("Skipped endpoint registration: no ServiceHandler hash available")
         return
 
     config = _load_configuration()
@@ -1024,21 +1085,27 @@ def _register_endpoints_with_servicehandler() -> None:
             resp = _send_post_request(post_req)
             if resp.status_code == 201:
                 registered_count += 1
-                logger.info(f"Registered endpoint: {ep['verb']} {ep['path']}")
+                log_info("Registered endpoint", {"verb": ep["verb"], "path": ep["path"]})
             elif resp.status_code == 409:
-                logger.debug(f"Endpoint already registered: {ep['verb']} {ep['path']}")
+                log_debug("Endpoint already registered", {"verb": ep["verb"], "path": ep["path"]})
             else:
-                logger.warning(f"Failed to register endpoint {ep['verb']} {ep['path']} (HTTP {resp.status_code})")
+                log_warn(
+                    "Failed to register endpoint",
+                    {"verb": ep["verb"], "path": ep["path"], "http_status": resp.status_code},
+                )
         except Exception as exc:
-            logger.warning(f"Failed to register endpoint {ep['verb']} {ep['path']}: {exc}")
+            log_warn(
+                "Failed to register endpoint",
+                {"verb": ep["verb"], "path": ep["path"], "exception": str(exc)},
+            )
 
-    logger.info(f"Endpoint registration summary: {registered_count} of {len(endpoints)} endpoints registered")
+    log_info("Endpoint registration summary", {"registered": registered_count, "total": len(endpoints)})
 
 
 def _servicehandler_keepalive_forever() -> None:
     """Register with ServiceHandler and maintain keepalive."""
     global SERVICEHANDLER_HASH
-    logger.info("ServiceHandler keepalive worker started")
+    log_info("ServiceHandler keepalive worker started")
     config = _load_configuration()
     ph_port = config.get("servicehandlerPort", 49155)
     service_name = "DiskIdentifier"
@@ -1057,15 +1124,15 @@ def _servicehandler_keepalive_forever() -> None:
                 if resp.status_code == 200:
                     if isinstance(resp.json_body, dict):
                         SERVICEHANDLER_HASH = resp.json_body.get("hash")
-                        logger.debug(f"ServiceHandler hash refreshed for {service_name}")
-                    logger.debug(f"ServiceHandler keepalive OK for {service_name}")
+                        log_debug("ServiceHandler hash refreshed", {"service": service_name})
+                    log_debug("ServiceHandler keepalive OK", {"service": service_name})
                     time.sleep(15)
                     continue
-                logger.warning(f"ServiceHandler question failed (HTTP {resp.status_code}), re-registering...")
+                log_warn("ServiceHandler question failed; re-registering", {"http_status": resp.status_code})
             except Exception as exc:
-                logger.warning(f"ServiceHandler question failed: {exc}")
+                log_warn("ServiceHandler question failed", {"exception": str(exc)})
             SERVICEHANDLER_HASH = None
-            logger.info("ServiceHandler hash cleared; will re-register")
+            log_info("ServiceHandler hash cleared; will re-register")
 
         # Not registered - try to register every 5 seconds
         try:
@@ -1084,41 +1151,30 @@ def _servicehandler_keepalive_forever() -> None:
             resp = _send_post_request(post_req)
             if resp.status_code == 201 and isinstance(resp.json_body, dict):
                 SERVICEHANDLER_HASH = resp.json_body.get("hash")
-                logger.info(f"Registered with ServiceHandler, hash={SERVICEHANDLER_HASH[:16]}...")
+                log_info("Registered with ServiceHandler", {"hash_prefix": SERVICEHANDLER_HASH[:16]})
                 if SERVICEHANDLER_HASH:
                     _register_endpoints_with_servicehandler()
                 continue
-            logger.debug(f"ServiceHandler registration returned HTTP {resp.status_code}")
+            log_debug("ServiceHandler registration response", {"http_status": resp.status_code})
         except Exception as exc:
-            logger.warning(f"ServiceHandler registration attempt failed: {exc}")
+            log_warn("ServiceHandler registration attempt failed", {"exception": str(exc)})
 
         time.sleep(5)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DiskIdentifier local web service")
-    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
-    log_level = logging.DEBUG if args.verbose else logging.INFO
     try:
-        log_dir = Path(__file__).resolve().parent.parent / "logs"
-        log_dir.mkdir(exist_ok=True)
-        log_file = log_dir / f"{datetime.now().strftime('%d-%m-%Y_%H.%M.%S')}.log"
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-            handlers=[
-                logging.StreamHandler(),
-                logging.FileHandler(log_file, encoding="utf-8"),
-            ],
-        )
+        init_logging("DiskIdentifier", debug=args.debug)
 
         _initialize_service_config()
         _refresh_disk_associations()
         _start_disk_association_refresh_loop()
     except Exception as exc:
-        logger.error(f"Failed to load configuration: {exc}")
+        log_error("Failed to load configuration", {"exception": str(exc), "traceback": traceback.format_exc()})
         exit(1)
 
     config = _load_configuration()
@@ -1129,41 +1185,42 @@ if __name__ == "__main__":
             daemon=True,
         )
         servicehandler_thread.start()
-        logger.info(f"Started ServiceHandler keepalive thread '{servicehandler_thread.name}'")
+        log_info("Started ServiceHandler keepalive thread", {"name": servicehandler_thread.name})
     else:
-        logger.info("ServiceHandler integration disabled (servicehandlerEnabled=false); skipping keepalive thread")
+        log_info("ServiceHandler integration disabled; skipping keepalive thread", {"servicehandler_enabled": False})
 
     try:
-        logger.info("=" * 50)
-        logger.info("  DiskIdentifier")
-        logger.info("=" * 50)
-        logger.info(f"Binding to: http://{SERVICE_HOST}:{SERVICE_PORT}")
-        logger.info(f"Mode: private (local only)")
-        logger.info(f"Universal identifier: {UNIVERSAL_DISK_IDENTIFIER_ID[:16] if UNIVERSAL_DISK_IDENTIFIER_ID else 'Not configured'}...")
-        logger.info(f"Disk associations loaded: {len(DISK_ASSOCIATION_CACHE)}")
-        logger.info(f"Refresh interval: {DISK_ASSOCIATION_REFRESH_INTERVAL_SECONDS}s")
-        logger.info("Server starting...")
+        log_info(
+            "DiskIdentifier starting",
+            {
+                "bind_address": f"http://{SERVICE_HOST}:{SERVICE_PORT}",
+                "mode": "private (local only)",
+                "universal_identifier_prefix": (
+                    UNIVERSAL_DISK_IDENTIFIER_ID[:16] if UNIVERSAL_DISK_IDENTIFIER_ID else "Not configured"
+                ),
+                "disk_associations_loaded": len(DISK_ASSOCIATION_CACHE),
+                "refresh_interval_seconds": DISK_ASSOCIATION_REFRESH_INTERVAL_SECONDS,
+            },
+        )
 
         app.run(host=SERVICE_HOST, port=SERVICE_PORT, debug=False, threaded=True)
 
     except KeyboardInterrupt:
-        logger.info("=" * 50)
-        logger.info("  Server Stopped")
-        logger.info("=" * 50)
+        log_info("Server stopped")
 
     except OSError as exc:
         if "Address already in use" in str(exc):
-            logger.error(
-                f"Port {SERVICE_PORT} is already in use. "
-                f"Change the port in resources/configuration.json"
+            log_error(
+                "Port already in use",
+                {"port": SERVICE_PORT, "hint": "Change the port in resources/configuration.json"},
             )
         elif "Permission denied" in str(exc):
-            logger.error(
-                f"Permission denied to bind to port {SERVICE_PORT}. "
-                f"Use a port >= 1024 or run with elevated privileges."
+            log_error(
+                "Permission denied binding port",
+                {"port": SERVICE_PORT, "hint": "Use a port >= 1024 or run with elevated privileges"},
             )
         else:
-            logger.error(f"Network binding failed: {exc}")
+            log_error("Network binding failed", {"exception": str(exc)})
 
     except Exception as exc:
-        logger.error(f"Server startup failed: {exc}")
+        log_error("Server startup failed", {"exception": str(exc)})

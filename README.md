@@ -32,9 +32,13 @@ DiskIdentifier binds to `127.0.0.1` on port `49157` and rejects API calls that d
 
 ## Run
 
-1. Windows: run `scripts\run.bat` (add `--verbose` for debug output).
-2. Unix-like: run `bash scripts/run.sh` (add `--verbose` for debug output).
-3. Manual: run `python src/main.py` from the project root (add `--verbose` for debug output).
+1. Windows: run `scripts\run.bat` (add `--debug` for debug output).
+2. Unix-like: run `bash scripts/run.sh` (add `--debug` for debug output).
+3. Manual: run `python src/main.py` from the project root (add `--debug` for debug output).
+
+## Logging
+
+DiskIdentifier writes structured JSON log events to `logs/` (one file per run, named `DD-MM-YYYY_HH.MM.SS.json`). Each event contains `timestamp`, `type` (`ERROR`, `WARN`, `INFO`, `DEBUG`), `title`, `data`, and a `hash` of the entry. Debug events are only recorded when the service is started with `--debug`. Log files older than 14 days are pruned automatically at startup.
 
 ## Access Control
 
